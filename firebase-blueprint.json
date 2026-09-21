@@ -1,0 +1,114 @@
+{
+  "entities": {
+    "CONTI": {
+      "title": "Conti",
+      "description": "Conti bancari, carte di credito, debito e contanti",
+      "fields": {
+        "conto_id": { "type": "string", "description": "ID leggibile e.g. CON00001" },
+        "nome_conto": { "type": "string", "description": "Nome conto" },
+        "tipo_conto": { "type": "string", "description": "Tipo conto" },
+        "saldo_iniziale": { "type": "number", "description": "Saldo iniziale" },
+        "saldo_reale": { "type": "number", "description": "Saldo reale inserito" },
+        "attivo": { "type": "boolean", "description": "Stato attivo" }
+      }
+    },
+    "FONDI": {
+      "title": "Fondi",
+      "description": "Fondi di pagamento e accantonamento",
+      "fields": {
+        "fondo_id": { "type": "string", "description": "ID leggibile e.g. FON00001" },
+        "nome_fondo": { "type": "string", "description": "Nome fondo" },
+        "saldo_iniziale": { "type": "number", "description": "Saldo iniziale" },
+        "saldo_reale": { "type": "number", "description": "Saldo reale inserito" },
+        "attivo": { "type": "boolean", "description": "Stato attivo" }
+      }
+    },
+    "MOVIMENTI": {
+      "title": "Movimenti",
+      "description": "Transazioni reali di spesa, entrata e giroconto",
+      "fields": {
+        "movimento_id": { "type": "string", "description": "ID leggibile e.g. MOV00001" },
+        "data": { "type": "string", "description": "Data ISO YYYY-MM-DD" },
+        "descrizione": { "type": "string", "description": "Descrizione movimento" },
+        "importo": { "type": "number", "description": "Importo movimento positivo" },
+        "tipologia": { "type": "string", "description": "USCITA, ENTRATA, GIROCONTO" },
+        "conto_origine": { "type": "string", "description": "Conto o fondo origine" },
+        "sottocategoria_id": { "type": "string", "description": "ID sottocategoria" }
+      }
+    },
+    "PIANIFICATI": {
+      "title": "Pianificati",
+      "description": "Movimenti e transazioni pianificate future con esecuzione programmata",
+      "fields": {
+        "pianificato_id": { "type": "string", "description": "ID leggibile e.g. PIA00001" },
+        "data_prevista": { "type": "string", "description": "Data programmata YYYY-MM-DD" },
+        "descrizione": { "type": "string", "description": "Descrizione movimento pianificato" },
+        "importo": { "type": "number", "description": "Importo pianificato maggiore di zero" },
+        "tipologia": { "type": "string", "description": "USCITA o ENTRATA" },
+        "conto_id": { "type": "string", "description": "Conto o fondo su cui addebitare/accreditare" },
+        "sottocategoria_id": { "type": "string", "description": "ID sottocategoria" },
+        "stato": { "type": "string", "description": "PENDENTE o ESEGUITO" }
+      }
+    },
+    "SCADENZE": {
+      "title": "Scadenze",
+      "description": "Scadenze imminenti e pagamenti pendenti con priorità e data scadenza",
+      "fields": {
+        "scadenza_id": { "type": "string", "description": "ID leggibile e.g. SCA00001" },
+        "data_scadenza": { "type": "string", "description": "Data scadenza YYYY-MM-DD" },
+        "descrizione": { "type": "string", "description": "Descrizione pagamento in scadenza" },
+        "importo_previsto": { "type": "number", "description": "Importo dovuto maggiore di zero" },
+        "sottocategoria_id": { "type": "string", "description": "ID sottocategoria" },
+        "conto_id": { "type": "string", "description": "Conto di addebito designato" },
+        "stato": { "type": "string", "description": "DA_PAGARE, PAGATA o ANNULLATA" },
+        "priorita": { "type": "string", "description": "ALTA, MEDIA o BASSA" }
+      }
+    },
+    "SOTTOCATEGORIE": {
+      "title": "Sottocategorie",
+      "description": "Sottocategorie con associazione categoria padre",
+      "fields": {
+        "nome": { "type": "string", "description": "Nome sottocategoria" },
+        "categoria_padre": { "type": "string", "description": "Categoria padre" },
+        "tipo": { "type": "string", "description": "ENTRATA o USCITA" }
+      }
+    },
+    "PROGETTI": {
+      "title": "Progetti e Finanziamenti",
+      "description": "Progetti, prestiti, mutui e debiti a lungo termine legati a sottocategorie determinate",
+      "fields": {
+        "progetto_id": { "type": "string", "description": "ID leggibile e.g. PRO00001" },
+        "nome_progetto": { "type": "string", "description": "Nome del progetto, mutuo o finanziamento" },
+        "tipo": { "type": "string", "description": "PROGETTO, FINANZIAMENTO, MUTUO, PRESTITO, DEBITO" },
+        "sottocategoria_id": { "type": "string", "description": "ID sottocategoria legata prettamente al progetto" },
+        "budget_previsto": { "type": "number", "description": "Importo totale finanziato o budget del progetto" },
+        "rata_mensile": { "type": "number", "description": "Rata mensile prevista" },
+        "stato": { "type": "string", "description": "ATTIVO, COMPLETATO, IN_PAUSA, ARCHIVIATO" }
+      }
+    },
+    "NOTE": {
+      "title": "Notepad e Idee",
+      "description": "Appunti, idee di spesa, progetti futuri e note personali o familiari",
+      "fields": {
+        "nota_id": { "type": "string", "description": "ID leggibile e.g. NOT00001" },
+        "titolo": { "type": "string", "description": "Titolo della nota o idea" },
+        "contenuto": { "type": "string", "description": "Testo o appunti dell'idea" },
+        "categoria": { "type": "string", "description": "Categoria tematica (es. Idee, Risparmio, Progetti, Acquisti, Famiglia)" },
+        "data_creazione": { "type": "string", "description": "Data di creazione YYYY-MM-DD" },
+        "data_modifica": { "type": "string", "description": "Data ultima modifica ISO" },
+        "fissata": { "type": "boolean", "description": "Nota fissata in alto (pinned)" },
+        "colore": { "type": "string", "description": "Colore della nota" }
+      }
+    },
+    "BUDGET": {
+      "title": "Budget Mensili",
+      "description": "Limiti di spesa e pianificazione budget mensile per sottocategoria",
+      "fields": {
+        "budget_id": { "type": "string", "description": "ID leggibile e.g. BDG00001" },
+        "sottocategoria_id": { "type": "string", "description": "ID sottocategoria target" },
+        "mese": { "type": "string", "description": "Mese di riferimento formato YYYY-MM" },
+        "importo_budget": { "type": "number", "description": "Importo massimo assegnato al budget" }
+      }
+    }
+  }
+}

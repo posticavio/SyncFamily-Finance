@@ -1,0 +1,145 @@
+@import "tailwindcss";
+@variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --font-sans: 'Google Sans', 'Google Sans Text', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+
+  html, body {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    color: #0f172a;
+    background: #f8fafc;
+    min-height: 100vh;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  html.dark body,
+  body.dark {
+    color: #F5F5F7;
+    background: #121212;
+  }
+}
+
+/* Custom Utilities for Samsung One UI & Fintech */
+.font-numeric {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Transizioni fluide */
+body, .bento-card, .glass-panel, .glass-dropdown {
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+}
+
+/* Glassmorphism for toolbars and bottom sheets */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.dark .glass-panel {
+  background: rgba(28, 28, 30, 0.94);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-dropdown {
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 16px 36px -8px rgba(15, 23, 42, 0.12);
+}
+
+.dark .glass-dropdown {
+  background: rgba(28, 28, 30, 0.98);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.7);
+}
+
+/* Samsung One UI Squircle Card style */
+.bento-card {
+  background: #ffffff;
+  border-radius: 22px;
+  box-shadow: 0 2px 12px -2px rgba(15, 23, 42, 0.04);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+/* Dark Mode Bento-Card */
+.dark .bento-card {
+  background: #1C1C1E;
+  border-color: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.4);
+}
+
+/* Dark Mode Harmonizers for Samsung One UI (#1C1C1E / #242426) */
+.dark .bg-white {
+  background-color: #1C1C1E !important;
+}
+
+.dark .bg-slate-50,
+.dark .bg-slate-50\/80,
+.dark .bg-slate-50\/60 {
+  background-color: #242426 !important;
+}
+
+.dark .bg-slate-100 {
+  background-color: #242426 !important;
+}
+
+.dark .bg-slate-200,
+.dark .bg-slate-200\/60 {
+  background-color: #2A2A2E !important;
+}
+
+.dark .text-slate-900,
+.dark .text-slate-800 {
+  color: #F5F5F7 !important;
+}
+
+.dark .text-slate-600,
+.dark .text-slate-500,
+.dark .text-slate-400 {
+  color: #8E8E93 !important;
+}
+
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-slate-200\/80,
+.dark .border-slate-200\/70,
+.dark .border-slate-300 {
+  border-color: rgba(255, 255, 255, 0.07) !important;
+}
+
+.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgba(255, 255, 255, 0.07) !important;
+}
+
+/* Recharts grid lines in dark mode */
+.dark .recharts-cartesian-grid line {
+  stroke: rgba(255, 255, 255, 0.07) !important;
+}
+
+/* Hide scrollbar while preserving scrolling */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

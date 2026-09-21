@@ -1,0 +1,6 @@
+{
+  "name": "Finanze Familiari",
+  "description": "Applicazione avanzata per la gestione delle finanze familiari multi-dispositivo con database online, proiezioni, fondi e budget.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

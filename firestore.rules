@@ -1,0 +1,117 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions per la convalida dei tipi e vincoli
+    function isValidNonEmptyString(val) {
+      return val is string && val.size() > 0 && val.size() < 500;
+    }
+
+    function isValidPositiveNumber(val) {
+      return (val is int || val is float || val is number) && val > 0;
+    }
+
+    function isValidNonNegativeNumber(val) {
+      return (val is int || val is float || val is number) && val >= 0;
+    }
+
+    // Verifica la struttura complessiva dell'archivio master_archive
+    function isValidMasterArchive(data) {
+      return data.keys().hasAll(['metadata', 'CONTI', 'MOVIMENTI'])
+        && data.CONTI is list
+        && data.MOVIMENTI is list
+        && (!('PIANIFICATI' in data) || data.PIANIFICATI is list)
+        && (!('SCADENZE' in data) || data.SCADENZE is list)
+        && (!('NOTE' in data) || data.NOTE is list)
+        && (!('PROGETTI' in data) || data.PROGETTI is list)
+        && (!('BUDGET' in data) || data.BUDGET is list)
+        && (!('FONDI' in data) || data.FONDI is list)
+        && (!('SOTTOCATEGORIE' in data) || data.SOTTOCATEGORIE is list)
+        && (!('REPORT_SETTIMANALI' in data) || data.REPORT_SETTIMANALI is list);
+    }
+
+    // Regola principale per l'archivio centrale sincronizzato
+    match /family_finance/master_archive {
+      allow read: if true;
+      allow write: if isValidMasterArchive(request.resource.data);
+    }
+
+    // Per collection individuali di Movimenti (Movements)
+    match /MOVIMENTI/{movementId} {
+      allow read: if true;
+      allow write: if isValidNonEmptyString(request.resource.data.descrizione)
+                   && isValidPositiveNumber(request.resource.data.importo)
+                   && isValidNonEmptyString(request.resource.data.conto_origine)
+                   && (request.resource.data.tipologia in ['USCITA', 'ENTRATA', 'GIROCONTO']);
+    }
+
+    // Per collection individuali di Pianificati (Planned)
+    match /PIANIFICATI/{plannedId} {
+      allow read: if true;
+      allow write: if isValidNonEmptyString(request.resource.data.descrizione)
+                   && isValidPositiveNumber(request.resource.data.importo)
+                   && isValidNonEmptyString(request.resource.data.conto_id)
+                   && (request.resource.data.stato in ['PENDENTE', 'ESEGUITO']);
+    }
+
+    // Per collection individuali di Scadenze (Deadlines)
+    match /SCADENZE/{deadlineId} {
+      allow read: if true;
+      allow write: if isValidNonEmptyString(request.resource.data.descrizione)
+                   && isValidPositiveNumber(request.resource.data.importo_previsto)
+                   && (request.resource.data.stato in ['DA_PAGARE', 'PAGATA', 'ANNULLATA'])
+                   && (request.resource.data.priorita in ['ALTA', 'MEDIA', 'BASSA']);
+    }
+
+    // Per collection individuali di Progetti (Projects & Loans)
+    match /PROGETTI/{projectId} {
+      allow read: if true;
+      allow write: if isValidNonEmptyString(request.resource.data.nome_progetto)
+                   && isValidPositiveNumber(request.resource.data.budget_previsto)
+                   && (request.resource.data.tipo in ['PROGETTO', 'MUTUO', 'FINANZIAMENTO', 'PRESTITO', 'DEBITO'])
+                   && (request.resource.data.stato in ['ATTIVO', 'COMPLETATO', 'IN_PAUSA', 'ARCHIVIATO']);
+    }
+
+    // Per collection individuali di Note (Notes & Ideas)
+    match /NOTE/{noteId} {
+      allow read: if true;
+      allow write: if isValidNonEmptyString(request.resource.data.titolo)
+                   && (!('contenuto' in request.resource.data) || request.resource.data.contenuto is string)
+                   && (!('fissata' in request.resource.data) || request.resource.data.fissata is bool);
+    }
+
+    // Per collection individuali di Budget
+    match /BUDGET/{budgetId} {
+      allow read: if true;
+      allow write: if isValidNonEmptyString(request.resource.data.sottocategoria_id)
+                   && isValidNonEmptyString(request.resource.data.mese)
+                   && isValidNonNegativeNumber(request.resource.data.importo_budget);
+    }
+
+    // Per collection individuali di Conti
+    match /CONTI/{contoId} {
+      allow read: if true;
+      allow write: if isValidNonEmptyString(request.resource.data.nome_conto)
+                   && isValidNonEmptyString(request.resource.data.tipo_conto);
+    }
+
+    // Per collection individuali di Fondi
+    match /FONDI/{fondoId} {
+      allow read: if true;
+      allow write: if isValidNonEmptyString(request.resource.data.nome_fondo);
+    }
+
+    // Per collection individuali di Sottocategorie
+    match /SOTTOCATEGORIE/{sottoId} {
+      allow read: if true;
+      allow write: if isValidNonEmptyString(request.resource.data.nome)
+                   && isValidNonEmptyString(request.resource.data.categoria_padre)
+                   && (request.resource.data.tipo in ['ENTRATA', 'USCITA']);
+    }
+
+    // Blocco sicuro per qualsiasi altro percorso imprevisto
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
