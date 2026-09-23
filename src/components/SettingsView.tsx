@@ -39,6 +39,7 @@ import {
   formatDMY 
 } from '../utils/financialDate';
 import { SettingsService } from '../services/SettingsService';
+import { GoogleDriveService } from '../services/GoogleDriveService';
 import { DB } from '../services/store';
 
 interface SettingsViewProps {
@@ -97,6 +98,42 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [giornoFine, setGiornoFine] = useState<number>(initialFinConfig.endDay);
   const [finSettingsSaved, setFinSettingsSaved] = useState(false);
   const [isSavingFinSettings, setIsSavingFinSettings] = useState(false);
+
+  // Google Drive Settings State
+  const [googleClientId, setGoogleClientId] = useState<string>(
+    localStorage.getItem('google_client_id') || ''
+  );
+  const [driveSaved, setDriveSaved] = useState(false);
+  const [isRenamingDrive, setIsRenamingDrive] = useState(false);
+  const [renameResult, setRenameResult] = useState<string | null>(null);
+
+  const handleSaveGoogleClientId = () => {
+    haptics.tap();
+    if (googleClientId.trim()) {
+      localStorage.setItem('google_client_id', googleClientId.trim());
+    } else {
+      localStorage.removeItem('google_client_id');
+    }
+    setDriveSaved(true);
+    haptics.success();
+    setTimeout(() => setDriveSaved(false), 3000);
+  };
+
+  const handleRenameExistingFiles = async () => {
+    haptics.tap();
+    setIsRenamingDrive(true);
+    setRenameResult(null);
+    try {
+      const res = await GoogleDriveService.renameExistingFiles();
+      setRenameResult(res.message);
+      haptics.success();
+    } catch (e: any) {
+      setRenameResult(`Errore: ${e.message || 'Impossibile rinominare i file'}`);
+      haptics.error();
+    } finally {
+      setIsRenamingDrive(false);
+    }
+  };
 
   // Live preview for current financial month based on state
   const previewPeriod = useMemo(() => {
@@ -578,6 +615,95 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <span>Applica Modifiche</span>
             <ArrowRight size={13} />
           </button>
+        </div>
+      </div>
+
+      {/* Google Drive Integration Configuration Card */}
+      <div className="bg-white dark:bg-[#1C1C1E] rounded-[26px] p-4 sm:p-6 border border-slate-200/80 dark:border-slate-800/80 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center flex-shrink-0">
+              <Database size={20} />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">
+                Integrazione Google Drive (Allegati & Scontrini)
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Configura il tuo Google OAuth Client ID per caricare scontrini e documenti nella cartella di Google Drive
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            {driveSaved && (
+              <span className="flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400 animate-in fade-in">
+                <CheckCircle2 size={15} />
+                <span>Salvato!</span>
+              </span>
+            )}
+            <button
+              onClick={handleSaveGoogleClientId}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full text-xs font-semibold shadow-md active:scale-95 transition-all flex items-center gap-1.5"
+            >
+              <Check size={14} strokeWidth={2.5} />
+              <span>Salva Client ID</span>
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+              Google OAuth Client ID
+            </label>
+            <a
+              href="https://console.cloud.google.com/apis/credentials"
+              target="_blank"
+              rel="noreferrer"
+              className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+            >
+              <span>Crea su Google Cloud Console</span>
+            </a>
+          </div>
+          <input
+            type="text"
+            value={googleClientId}
+            onChange={(e) => setGoogleClientId(e.target.value)}
+            placeholder="es. 501552031023-xxxxxx.apps.googleusercontent.com"
+            className="w-full bg-slate-50 dark:bg-[#242426] border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+          />
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
+            <strong className="text-indigo-600 dark:text-indigo-400">Guida rapida:</strong> Poiché hai autorizzato i permessi OAuth per Google Drive nel progetto, per completare il collegamento cloud ti basta creare un ID client OAuth (tipo <em className="text-slate-700 dark:text-slate-200">Applicazione Web</em>) su Google Cloud Console inserendo come origine JavaScript autorizzata:<br />
+            <code className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded font-mono text-[10px] text-indigo-600 dark:text-indigo-300 mt-1 inline-block">https://ais-dev-3hjidab6omtxoqfqh2inim-4058020433.europe-west3.run.app</code><br />
+            Incolla qui sopra il Client ID generato e clicca su <strong className="text-slate-700 dark:text-slate-200">Salva Client ID</strong>. Se non inserisci il Client ID, l'app continuerà a salvare i file in modalità locale con la formattazione corretta.
+          </p>
+
+          <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                Aggiorna nome file esistenti su Google Drive
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Applica la nuova formattazione standardizzata (<code className="text-[10px] font-mono">DD-MM-YYYY - Descrizione - Importo</code>) a tutti i file già presenti nella cartella.
+              </p>
+            </div>
+            <button
+              onClick={handleRenameExistingFiles}
+              disabled={isRenamingDrive}
+              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white rounded-full text-xs font-semibold shadow-sm active:scale-95 transition-all flex items-center gap-1.5 flex-shrink-0 disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={isRenamingDrive ? "animate-spin" : ""} />
+              <span>{isRenamingDrive ? "Aggiornamento..." : "Applica nuova formattazione"}</span>
+            </button>
+          </div>
+
+          {renameResult && (
+            <div className={`mt-2 p-2.5 rounded-xl text-xs font-medium flex items-center gap-2 ${renameResult.startsWith('Errore') ? 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'}`}>
+              <Info size={16} className="flex-shrink-0" />
+              <span>{renameResult}</span>
+            </div>
+          )}
         </div>
       </div>
 

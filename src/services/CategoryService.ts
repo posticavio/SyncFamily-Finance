@@ -1,5 +1,5 @@
 import { DB, persistDB, generateHumanID, generateUUID } from './store';
-import { Subcategory, MovementType, SubcategoryClassification, getSubcategoryClassification } from '../types';
+import { Subcategory, MovementType, MovementNecessity, SubcategoryClassification, getSubcategoryClassification, getSubcategoryNecessity } from '../types';
 
 export const CategoryService = {
   async getAllSubcategories(): Promise<Subcategory[]> {
@@ -32,7 +32,7 @@ export const CategoryService = {
     return false;
   },
 
-  // Aggiornamento di una sottocategoria (personalizzazione icona/emoji, colore, nome)
+  // Aggiornamento di una sottocategoria (personalizzazione icona/emoji, colore, nome, regola 50/30/20)
   async updateSubcategory(id: string, updates: Partial<Subcategory>): Promise<Subcategory> {
     const sub = DB.SOTTOCATEGORIE.find(s => s.id === id);
     if (!sub) {
@@ -49,6 +49,7 @@ export const CategoryService = {
     categoria_padre: string;
     tipo: MovementType;
     classificazione?: SubcategoryClassification;
+    necessita?: MovementNecessity;
     icon_name?: string;
     colore?: string;
     preferita?: boolean;
@@ -57,10 +58,12 @@ export const CategoryService = {
       tipo: data.tipo,
       nome: data.nome.trim(),
       categoria_padre: data.categoria_padre.trim() || (data.tipo === 'ENTRATA' ? 'Entrate Varie' : 'Spese Varie'),
-      classificazione: data.classificazione
+      classificazione: data.classificazione,
+      necessita: data.necessita
     } as Subcategory;
 
     const resolvedClassification = data.classificazione || getSubcategoryClassification(tempSub);
+    const resolvedNecessita = data.necessita || getSubcategoryNecessity(tempSub);
 
     const newSub: Subcategory = {
       id: generateUUID(),
@@ -69,6 +72,7 @@ export const CategoryService = {
       categoria_padre: data.categoria_padre.trim() || (data.tipo === 'ENTRATA' ? 'Entrate Varie' : 'Spese Varie'),
       tipo: data.tipo,
       classificazione: resolvedClassification,
+      necessita: resolvedNecessita,
       icon_name: data.icon_name || (data.tipo === 'ENTRATA' ? 'PlusCircle' : 'Tag'),
       colore: data.colore || (data.tipo === 'ENTRATA' ? '#10B981' : '#E31B23'),
       preferita: data.preferita ?? true,

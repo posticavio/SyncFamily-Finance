@@ -102,7 +102,7 @@ export const TransactionTemplateSelector: React.FC<TransactionTemplateSelectorPr
       sottocategoria_id: customSubId || subcategories[0]?.id,
       conto_origine: customAccId || accounts[0]?.id,
       natura: customTipo === 'ENTRATA' ? 'FISSA' : (customFreq === 'MENSILE' ? 'FISSA' : 'VARIABILE'),
-      necessita: 'BISOGNO',
+      necessita: 'DEVO',
       icon: chosenSub?.icon_name || 'Bookmark',
       colore: chosenSub?.colore || '#4f46e5',
       frequenza_suggerita: customFreq,

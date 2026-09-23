@@ -112,6 +112,8 @@ export function formatDateIT(dateStr: string | Date | undefined | null): string 
   return dateStr;
 }
 
+export const formatDate = formatDateIT;
+
 /**
  * Formattazione con data estesa o relativa per intestazioni, con fallback sempre su GG/MM/AA
  */

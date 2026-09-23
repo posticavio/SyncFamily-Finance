@@ -191,6 +191,89 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Endpoint OCR Scontrini & Ricevute con Gemini Vision (gemini-3.8-flash)
+app.post('/api/scan-receipt', async (req, res) => {
+  try {
+    const { imageBase64, mimeType = 'image/jpeg', subcategories = [] } = req.body;
+    if (!imageBase64) {
+      return res.status(400).json({ error: 'Immagine scontrino mancante (imageBase64)' });
+    }
+
+    const ai = getAI();
+    if (!ai) {
+      return res.status(503).json({
+        error: 'Servizio Gemini non configurato (GEMINI_API_KEY assente)'
+      });
+    }
+
+    // Costruzione elenco categorie note per agevolare il matching contestuale
+    const subcatList = Array.isArray(subcategories) && subcategories.length > 0
+      ? `Ecco l'elenco delle sottocategorie disponibili nell'app: ${subcategories.map((s: any) => `"${s.nome}" (${s.tipo || 'USCITA'})`).join(', ')}.`
+      : '';
+
+    const prompt = `
+Sei un assistente esperto nell'analisi e digitalizzazione di scontrini fiscali, fatture e ricevute di pagamento.
+Analizza con estrema precisione l'immagine dello scontrino fornita.
+
+${subcatList}
+
+Estrai e restituisci ESCLUSIVAMENTE un oggetto JSON valido con questi campi:
+{
+  "importo": 12.50, // Importo TOTALE FINALE pagato come numero decimale
+  "descrizione": "Nome Commerciante / Negozio o sintesi spesa", // Es: "Esselunga", "Farmacia San Carlo", "Ristorante Il Moro", "Eni Station"
+  "data": "YYYY-MM-DD", // Data dello scontrino se leggibile (altrimenti null o data odierna)
+  "sottocategoria_suggerita": "Nome della sottocategoria più affine", // Scegli tra quelle dell'elenco fornito se presente, es: "Spesa Supermercato", "Farmaci", "Carburante", "Ristoranti"
+  "necessita_suggerita": "DEVO" | "HO_BISOGNO" | "VOGLIO", // 50/30/20: DEVO (spese fisse, utenze), HO_BISOGNO (cibo, farmaci, benzina), VOGLIO (ristorante, shopping, svago)
+  "dettaglio_articoli": ["Articolo 1 - 3,50 €", "Articolo 2 - 9,00 €"], // Elenco stringhe dei prodotti rilevati (opzionale se visibili)
+  "confidenza": "ALTA" | "MEDIA" | "BASSA"
+}
+
+Restituisci ESCLUSIVAMENTE il JSON puro, senza blocchi markdown né testo introduttivo.
+`;
+
+    // Pulizia base64 se include data:image/xxx;base64,
+    const cleanBase64 = imageBase64.replace(/^data:image\/[a-zA-Z+]+;base64,/, '');
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                data: cleanBase64,
+                mimeType: mimeType
+              }
+            },
+            {
+              text: prompt
+            }
+          ]
+        }
+      ],
+      config: {
+        responseMimeType: 'application/json',
+        temperature: 0.1
+      }
+    });
+
+    const text = response.text || '';
+    const cleanJson = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+    const result = JSON.parse(cleanJson);
+
+    return res.json({
+      success: true,
+      data: result
+    });
+  } catch (err: any) {
+    console.error('Errore analisi scontrino con Gemini Vision:', err);
+    return res.status(500).json({
+      error: err?.message || 'Errore durante la scansione dello scontrino con Gemini Vision'
+    });
+  }
+});
+
 app.get('/api/financial-report/status', (req, res) => {
   const hasKey = !!process.env.GEMINI_API_KEY;
   res.json({
@@ -374,6 +457,56 @@ Restituisci ESCLUSIVAMENTE l'oggetto JSON puro, senza blocchi di codice markdown
 // ----------------------------------------------------
 
 async function startServer() {
+  // Endpoint Webhook / REST per inserimento rapido da widget Android esterni (HTTP Shortcuts / Tasker)
+  app.post('/api/quick-transaction', (req, res) => {
+    try {
+      const { 
+        importo, 
+        descrizione, 
+        tipologia = 'USCITA', 
+        conto_origine, 
+        sottocategoria_id, 
+        necessita = 'DEVO',
+        data = new Date().toISOString().split('T')[0],
+        note = ''
+      } = req.body;
+
+      const parsedAmount = Math.abs(parseFloat(importo) || 0);
+      if (parsedAmount <= 0) {
+        return res.status(400).json({ 
+          error: 'Importo non valido o mancante. Deve essere un numero positivo.' 
+        });
+      }
+
+      const newMovement = {
+        id: `quick-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        movimento_id: `quick-${Date.now()}`,
+        data: String(data).trim(),
+        descrizione: String(descrizione || 'Spesa rapida').trim(),
+        importo: parsedAmount,
+        tipologia: ['ENTRATA', 'USCITA', 'GIROCONTO'].includes(tipologia) ? tipologia : 'USCITA',
+        conto_origine: conto_origine || null,
+        sottocategoria_id: sottocategoria_id || null,
+        necessita: ['DEVO', 'HO_BISOGNO', 'VOGLIO'].includes(necessita) ? necessita : 'DEVO',
+        stato: 'CONFERMATO',
+        origine_dati: 'WIDGET_ESTERNO',
+        note: String(note || ''),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        is_deleted: false
+      };
+
+      return res.status(201).json({
+        success: true,
+        message: 'Movimento rapido registrato con successo',
+        data: newMovement
+      });
+    } catch (err: any) {
+      console.error('Errore registrazione transazione rapida API:', err);
+      return res.status(500).json({ error: 'Errore interno elaborazione transazione' });
+    }
+  });
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

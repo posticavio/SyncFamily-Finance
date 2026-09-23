@@ -30,6 +30,7 @@ import { CashflowSankeyChart } from './CashflowSankeyChart';
 import { DashboardSkeleton } from './DashboardSkeleton';
 import { TabHeaderInfo } from './TabHeaderInfo';
 import { Carousel } from './Carousel';
+import { DailyBurnRateWidget } from './DailyBurnRateWidget';
 
 interface BentoDashboardProps {
   isLoading?: boolean;
@@ -97,7 +98,7 @@ export const BentoDashboard: React.FC<BentoDashboardProps> = ({
   }
 
   const [includePlanned, setIncludePlanned] = useState(false);
-  const [activeChartTab, setActiveChartTab] = useState<'ACCOUNTS' | 'SANKEY' | 'MACRO_MONTHLY' | 'DAILY' | 'MONTHLY' | 'FORECAST'>('ACCOUNTS');
+  const [activeChartTab, setActiveChartTab] = useState<'MACRO_MONTHLY' | 'SANKEY' | 'ACCOUNTS' | 'DAILY' | 'MONTHLY' | 'FORECAST'>('MACRO_MONTHLY');
   const [summaryViewTab, setSummaryViewTab] = useState<'SALDI' | 'FLUSSI' | 'TUTTI'>('SALDI');
   const [isChartsVisible, setIsChartsVisible] = useState(true);
 
@@ -357,6 +358,24 @@ export const BentoDashboard: React.FC<BentoDashboardProps> = ({
     </Carousel>
   );
 
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const todayExpenses = useMemo(() => {
+    return (movements || [])
+      .filter(m => m.tipologia === 'USCITA' && m.data === todayStr && !(m as any).is_deleted)
+      .reduce((sum, m) => sum + (Number(m.importo) || 0), 0);
+  }, [movements, todayStr]);
+
+  const daysRemainingInCycle = useMemo(() => {
+    const now = new Date();
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return Math.max(1, endOfMonth.getDate() - now.getDate());
+  }, []);
+
+  const remainingVariableBudget = useMemo(() => {
+    const remaining = Math.max(0, entrateMese - usciteMese);
+    return remaining > 0 ? remaining : Math.max(0, 600 - todayExpenses);
+  }, [entrateMese, usciteMese, todayExpenses]);
+
   return (
     <div id="bento-dashboard-grid" className="mt-0 space-y-2.5 sm:space-y-4">
       {/* 4. SEZIONE TITOLO PAGINA CON SELETTORE METRICHE INTEGRATO NELL'AREA BLU */}
@@ -473,6 +492,14 @@ export const BentoDashboard: React.FC<BentoDashboardProps> = ({
         )}
       </AnimatePresence>
 
+      {/* Widget Ritmo di Spesa Giornaliera Consigliata (Safe-to-Spend One UI) */}
+      <DailyBurnRateWidget
+        remainingBudget={remainingVariableBudget}
+        daysRemainingInCycle={daysRemainingInCycle}
+        todaySpent={todayExpenses}
+        totalCycleBudget={entrateMese > 0 ? entrateMese : 1500}
+      />
+
       {/* Sezione Grafici e Tendenze: Raggruppamento Ottimizzato con Selettore a Pillola One UI */}
       <div id="dashboard-charts-grouped-section" className="space-y-3 pt-1">
         {/* Header di Sezione & Selettore Grafici */}
@@ -489,7 +516,7 @@ export const BentoDashboard: React.FC<BentoDashboardProps> = ({
                 <p className="text-[11px] sm:text-xs text-slate-500 dark:text-[#8E8E93] leading-snug">
                   {activeChartTab === 'ACCOUNTS' && 'Andamento e proiezione dei saldi per singolo conto'}
                   {activeChartTab === 'SANKEY' && 'Flusso dinamico: dai guadagni alle categorie di spesa'}
-                  {activeChartTab === 'MACRO_MONTHLY' && 'Ripartizione mensile: Guadagni, Spese Essenziali e Spese Extra con analisi 50/30/20'}
+                  {activeChartTab === 'MACRO_MONTHLY' && 'Ripartizione mensile: Guadagni e Spese con analisi 50/30/20 (Devo, Ho bisogno, Voglio)'}
                   {activeChartTab === 'DAILY' && 'Flussi giornalieri entrate vs uscite sui 30 giorni'}
                   {activeChartTab === 'MONTHLY' && 'Trend storico mensile e confronto col budget'}
                   {activeChartTab === 'FORECAST' && 'Evoluzione saldo calcolato fino al 9 successivo'}
@@ -516,6 +543,23 @@ export const BentoDashboard: React.FC<BentoDashboardProps> = ({
             <div className="flex bg-slate-100 dark:bg-[#242426] p-1 rounded-full text-xs font-medium overflow-x-auto no-scrollbar border border-slate-200/60 dark:border-white/5 flex-shrink-0">
             <button
               type="button"
+              id="chart-tab-macro-monthly"
+              onClick={() => {
+                setActiveChartTab('MACRO_MONTHLY');
+                haptics.tap();
+              }}
+              className={`px-3.5 py-1.5 rounded-full transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer active:scale-95 ${
+                activeChartTab === 'MACRO_MONTHLY'
+                  ? 'bg-[#E31B23] text-white shadow-2xs font-semibold'
+                  : 'text-slate-600 dark:text-[#8E8E93] hover:text-slate-900 dark:hover:text-[#F5F5F7]'
+              }`}
+            >
+              <BarChart3 size={13} strokeWidth={2} />
+              <span>Entrate vs Spese (Mese per Mese)</span>
+            </button>
+
+            <button
+              type="button"
               id="chart-tab-sankey"
               onClick={() => {
                 setActiveChartTab('SANKEY');
@@ -529,23 +573,6 @@ export const BentoDashboard: React.FC<BentoDashboardProps> = ({
             >
               <GitFork size={13} strokeWidth={2} />
               <span>Flusso Sankey</span>
-            </button>
-
-            <button
-              type="button"
-              id="chart-tab-macro-monthly"
-              onClick={() => {
-                setActiveChartTab('MACRO_MONTHLY');
-                haptics.tap();
-              }}
-              className={`px-3.5 py-1.5 rounded-full transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer active:scale-95 ${
-                activeChartTab === 'MACRO_MONTHLY'
-                  ? 'bg-[#E31B23] text-white shadow-2xs font-semibold'
-                  : 'text-slate-600 dark:text-[#8E8E93] hover:text-slate-900 dark:hover:text-[#F5F5F7]'
-              }`}
-            >
-              <PieChart size={13} strokeWidth={2} />
-              <span>Guadagni & Macro Spese</span>
             </button>
 
             <button

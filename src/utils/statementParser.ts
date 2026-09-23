@@ -33,9 +33,30 @@ export interface StatementParseResult {
  * - DD/MM/YY (es. 14/09/26 -> 2026-09-14)
  * - YYYY-MM-DD, YYYY/MM/DD
  */
-export function normalizeDateToISO(dateStr: string): string | null {
-  if (!dateStr) return null;
-  const clean = dateStr.trim();
+export function normalizeDateToISO(dateStr: string | number | null | undefined): string | null {
+  if (dateStr === null || dateStr === undefined) return null;
+  const clean = String(dateStr).trim();
+  if (!clean || clean === '-' || clean === '0' || clean.toLowerCase() === 'nan') return null;
+
+  // Gestione numeri seriali Excel (es. 45000)
+  const numVal = Number(clean);
+  if (!isNaN(numVal) && numVal > 10000 && numVal < 60000) {
+    try {
+      const utcDays = Math.floor(numVal - 25569);
+      const utcValue = utcDays * 86400 * 1000;
+      const dateInfo = new Date(utcValue);
+      if (!isNaN(dateInfo.getTime())) {
+        const y = dateInfo.getUTCFullYear();
+        const m = String(dateInfo.getUTCMonth() + 1).padStart(2, '0');
+        const d = String(dateInfo.getUTCDate()).padStart(2, '0');
+        if (y >= 2000 && y <= 2100) {
+          return `${y}-${m}-${d}`;
+        }
+      }
+    } catch (e) {
+      // Ignora errori seriale excel
+    }
+  }
 
   // Pattern YYYY-MM-DD or YYYY/MM/DD
   const isoMatch = clean.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
@@ -65,13 +86,21 @@ export function normalizeDateToISO(dateStr: string): string | null {
     return `${y}-${m}-${d}`;
   }
 
-  // Fallback con Date.parse
-  const parsed = new Date(clean);
-  if (!isNaN(parsed.getTime())) {
-    const y = parsed.getFullYear();
-    const m = String(parsed.getMonth() + 1).padStart(2, '0');
-    const d = String(parsed.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
+  // Fallback sicuro con Date.parse protetto
+  try {
+    if (clean.length >= 8 && clean.length <= 30 && !/^[a-zA-Z\s]+$/.test(clean)) {
+      const parsed = new Date(clean);
+      if (parsed && !isNaN(parsed.getTime())) {
+        const y = parsed.getFullYear();
+        const m = String(parsed.getMonth() + 1).padStart(2, '0');
+        const d = String(parsed.getDate()).padStart(2, '0');
+        if (y >= 1970 && y <= 2100) {
+          return `${y}-${m}-${d}`;
+        }
+      }
+    }
+  } catch (e) {
+    // Ignore invalid date errors
   }
 
   return null;
@@ -348,7 +377,7 @@ export function parseBankStatement(rawText: string, customOptions?: {
   debitColIndex?: number;
   creditColIndex?: number;
 }): StatementParseResult {
-  const cleanText = rawText.trim();
+  const cleanText = rawText.trim().replace(/^\uFEFF/, '');
   if (!cleanText) {
     return {
       rows: [],
@@ -391,14 +420,16 @@ export function parseBankStatement(rawText: string, customOptions?: {
   let headerIndex = -1;
   let dateColIdx = customOptions?.dateColIndex ?? -1;
   let descColIdx = customOptions?.descColIndex ?? -1;
+  let causaleColIdx = -1;
   let amountColIdx = customOptions?.amountColIndex ?? -1;
   let debitColIdx = customOptions?.debitColIndex ?? -1; // Uscite / Dare
   let creditColIdx = customOptions?.creditColIndex ?? -1; // Entrate / Avere
 
   // Parole chiave comuni negli estratti conto italiani ed europei
   const dateKeywords = ['data contabile', 'data valuta', 'data operazione', 'data', 'date', 'giorno'];
-  const descKeywords = ['descrizione', 'causale', 'dettaglio', 'operazione', 'beneficiario', 'disposizione', 'memo', 'description'];
-  const amountKeywords = ['importo', 'amount', 'valore', 'totale', 'saldo'];
+  const descKeywords = ['descrizione operazione', 'descrizione', 'dettaglio', 'operazione', 'beneficiario', 'disposizione', 'memo', 'description'];
+  const causaleKeywords = ['causale', 'cautela'];
+  const amountKeywords = ['importo', 'amount', 'valore', 'totale'];
   const debitKeywords = ['dare', 'uscite', 'addebiti', 'spese', 'debit', 'outflow'];
   const creditKeywords = ['avere', 'entrate', 'accrediti', 'incassi', 'credit', 'inflow'];
 
@@ -423,6 +454,9 @@ export function parseBankStatement(rawText: string, customOptions?: {
         }
         if (descColIdx === -1 && descKeywords.some(kw => col.includes(kw))) {
           descColIdx = idx;
+        }
+        if (causaleColIdx === -1 && causaleKeywords.some(kw => col.includes(kw))) {
+          causaleColIdx = idx;
         }
         if (debitColIdx === -1 && debitKeywords.some(kw => col === kw || col.includes(kw))) {
           debitColIdx = idx;
@@ -567,7 +601,22 @@ export function parseBankStatement(rawText: string, customOptions?: {
     // È non contabilizzato se contiene parole chiave oppure se la data contabile era originariamente assente
     const isNonContabilizzato = isUnbookedKeyword || (isFallbackDateUsed && (!cols[dateColIdx] || cols[dateColIdx].trim() === '-' || cols[dateColIdx].trim() === ''));
 
-    const description = cols[descColIdx]?.trim() || 'Movimento da estratto conto';
+    // Combina Causale e Descrizione Operazione (es. formato ING)
+    const causaleVal = causaleColIdx >= 0 ? cols[causaleColIdx]?.trim() || '' : '';
+    const descVal = descColIdx >= 0 ? cols[descColIdx]?.trim() || '' : '';
+    
+    let description = '';
+    if (causaleVal && descVal && !descVal.toLowerCase().includes(causaleVal.toLowerCase())) {
+      description = `${causaleVal} - ${descVal}`;
+    } else {
+      description = descVal || causaleVal || cols[descColIdx >= 0 ? descColIdx : 1]?.trim() || 'Movimento da estratto conto';
+    }
+
+    // Ignora righe di riepilogo saldo (es. "Saldo iniziale", "Saldo finale")
+    const lowerDesc = description.toLowerCase();
+    if (lowerDesc.includes('saldo iniziale') || lowerDesc.includes('saldo finale') || lowerDesc.includes('saldo contabile')) {
+      continue;
+    }
 
     let amount = 0;
     let type: MovementType = 'USCITA';

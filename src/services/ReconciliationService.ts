@@ -305,6 +305,57 @@ export const ReconciliationService = {
         continue;
       }
 
+      // FASE 1.5: Fallback match per importo identico e tipo compatibile (finestra estesa a 45 giorni)
+      const relaxedCandidates: {
+        movement: Movement;
+        dateDiff: number;
+      }[] = [];
+
+      for (const mov of registeredMovements) {
+        if (matchedMovementIds.has(mov.id)) continue;
+
+        const isAmountEqual = Math.abs(mov.importo - row.amount) < 0.009;
+        if (!isAmountEqual) continue;
+
+        let isTypeCompatible = false;
+        if (row.type === 'USCITA') {
+          if (mov.conto_origine === accountId && (mov.tipologia === 'USCITA' || mov.tipologia === 'GIROCONTO')) {
+            isTypeCompatible = true;
+          }
+        } else if (row.type === 'ENTRATA') {
+          if (mov.conto_origine === accountId && mov.tipologia === 'ENTRATA') {
+            isTypeCompatible = true;
+          } else if (mov.conto_destinazione === accountId && mov.tipologia === 'GIROCONTO') {
+            isTypeCompatible = true;
+          }
+        }
+
+        if (!isTypeCompatible) continue;
+
+        const diffDays = getDaysDifference(row.date, mov.data);
+        if (Math.abs(diffDays) <= 45) {
+          relaxedCandidates.push({ movement: mov, dateDiff: diffDays });
+        }
+      }
+
+      if (relaxedCandidates.length > 0) {
+        relaxedCandidates.sort((a, b) => Math.abs(a.dateDiff) - Math.abs(b.dateDiff));
+        const bestRelaxed = relaxedCandidates[0];
+        matchedMovementIds.add(bestRelaxed.movement.id);
+
+        items.push({
+          id: row.id,
+          statementRow: row,
+          matchStatus: 'MATCHED_DATE_DIFF',
+          matchedMovement: bestRelaxed.movement,
+          dateDiffDays: bestRelaxed.dateDiff,
+          suggestedSubcategoryId: bestRelaxed.movement.sottocategoria_id || suggestedSubId,
+          selectedSubcategoryId: bestRelaxed.movement.sottocategoria_id || suggestedSubId,
+          selectedForImport: false
+        });
+        continue;
+      }
+
       // FASE 2: Se non abbinato a un movimento registrato, verifica se corrisponde a un pianificato pendente
       const plannedCandidates: {
         planned: Planned;
@@ -445,6 +496,8 @@ export const ReconciliationService = {
       amount: number;
       type: MovementType;
       subcategoryId: string;
+      originAccountId?: string | null;
+      destinationAccountId?: string | null;
       matchedPlannedId?: string;
       isNonContabilizzato?: boolean;
       note?: string;
@@ -467,6 +520,8 @@ export const ReconciliationService = {
       const sub = (DB.SOTTOCATEGORIE || []).find(s => s.id === item.subcategoryId);
       const isGiroconto = sub?.tipo === 'GIROCONTO' || sub?.categoria_padre?.toLowerCase().includes('trasferimenti') || item.type === 'GIROCONTO';
       const effectiveType: MovementType = isGiroconto ? 'GIROCONTO' : item.type;
+      const itemOriginAcc = item.originAccountId || accountId;
+      const contoDest = isGiroconto ? (item.destinationAccountId || null) : null;
 
       if (item.matchedPlannedId) {
         // Se corrispondeva a un pianificato, esegui il pianificato (che genera il movimento e aggiorna lo stato a ESEGUITO)
@@ -481,7 +536,8 @@ export const ReconciliationService = {
             descrizione: item.description,
             importo: item.amount,
             tipologia: effectiveType,
-            conto_origine: accountId,
+            conto_origine: itemOriginAcc,
+            conto_destinazione: contoDest,
             sottocategoria_id: item.subcategoryId,
             origine_dati: 'IMPORTAZIONE',
             non_contabilizzato: item.isNonContabilizzato,
@@ -498,7 +554,8 @@ export const ReconciliationService = {
           descrizione: item.description,
           importo: item.amount,
           tipologia: effectiveType,
-          conto_origine: accountId,
+          conto_origine: itemOriginAcc,
+          conto_destinazione: contoDest,
           sottocategoria_id: item.subcategoryId,
           origine_dati: 'IMPORTAZIONE',
           non_contabilizzato: item.isNonContabilizzato,

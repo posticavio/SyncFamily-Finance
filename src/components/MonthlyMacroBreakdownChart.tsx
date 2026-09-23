@@ -1016,8 +1016,8 @@ export const MonthlyMacroBreakdownChart: React.FC<MonthlyMacroBreakdownChartProp
                 <PieChart size={20} className="text-red-500" />
                 Guadagni, Spese Essenziali & Spese Extra
               </span>
-              <span className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                Regola 50/30/20
+              <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                50/30/20: Devo • Ho bisogno • Voglio
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -1716,7 +1716,7 @@ export const MonthlyMacroBreakdownChart: React.FC<MonthlyMacroBreakdownChartProp
           <div className="space-y-2 p-4 rounded-2xl bg-slate-100 dark:bg-[#242426] border border-slate-200/50 dark:border-slate-750">
             <div className="flex items-center justify-between text-xs font-bold">
               <span className="text-slate-700 dark:text-slate-300">
-                Ripartizione Effettiva del Mese vs Modello 50/30/20
+                Ripartizione Effettiva del Mese vs Modello 50/30/20 (Devo • Ho bisogno • Voglio)
               </span>
               <span className="text-slate-500 dark:text-slate-400 tabular-nums">
                 Entrate: {formatCur(activeMonth503020.income)}
@@ -1729,60 +1729,60 @@ export const MonthlyMacroBreakdownChart: React.FC<MonthlyMacroBreakdownChartProp
                 <div 
                   style={{ width: `${Math.min(100, activeMonth503020.essPercent)}%` }}
                   className="bg-red-500 h-full transition-all"
-                  title={`Spese Essenziali: ${activeMonth503020.essPercent}%`}
+                  title={`Devo (Spese Fisse/Essenziali): ${activeMonth503020.essPercent}%`}
                 />
               )}
               {activeMonth503020.extPercent > 0 && (
                 <div 
                   style={{ width: `${Math.min(100 - activeMonth503020.essPercent, activeMonth503020.extPercent)}%` }}
                   className="bg-amber-500 h-full transition-all"
-                  title={`Spese Extra: ${activeMonth503020.extPercent}%`}
+                  title={`Ho bisogno / Extra: ${activeMonth503020.extPercent}%`}
                 />
               )}
               {activeMonth503020.savePercent > 0 && (
                 <div 
                   style={{ width: `${Math.min(100 - (activeMonth503020.essPercent + activeMonth503020.extPercent), activeMonth503020.savePercent)}%` }}
                   className="bg-emerald-500 h-full transition-all"
-                  title={`Risparmio: ${activeMonth503020.savePercent}%`}
+                  title={`Voglio / Risparmio: ${activeMonth503020.savePercent}%`}
                 />
               )}
             </div>
 
-            {/* Indicatori a confronto col benchmark */}
+            {/* Indicatori a confronto col benchmark (Devo / Ho bisogno / Voglio) */}
             <div className="grid grid-cols-3 gap-2 pt-1 text-center">
               <div className="p-2 rounded-xl bg-red-500/10 border border-red-500/20">
                 <div className="text-[10px] uppercase font-bold text-red-600 dark:text-red-400">
-                  Essenziali
+                  Devo (50%)
                 </div>
                 <div className="text-sm font-bold text-slate-900 dark:text-slate-100 tabular-nums font-numeric">
                   {formatItalianPercent(activeMonth503020.essPercent, { decimals: 0 })}
                 </div>
                 <div className="text-[10px] text-slate-400">
-                  Obiettivo: max 50%
+                  Spese fisse • Target: max 50%
                 </div>
               </div>
 
               <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20">
                 <div className="text-[10px] uppercase font-bold text-amber-600 dark:text-amber-400">
-                  Extra / Desideri
+                  Ho bisogno (30%)
                 </div>
                 <div className="text-sm font-bold text-slate-900 dark:text-slate-100 tabular-nums font-numeric">
                   {formatItalianPercent(activeMonth503020.extPercent, { decimals: 0 })}
                 </div>
                 <div className="text-[10px] text-slate-400">
-                  Obiettivo: max 30%
+                  Bisogni • Target: max 30%
                 </div>
               </div>
 
               <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
                 <div className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400">
-                  Risparmio Netto
+                  Voglio (20%)
                 </div>
                 <div className="text-sm font-bold text-slate-900 dark:text-slate-100 tabular-nums font-numeric">
                   {formatItalianPercent(activeMonth503020.savePercent, { decimals: 0 })}
                 </div>
                 <div className="text-[10px] text-slate-400">
-                  Obiettivo: min 20%
+                  Desideri & Risparmio • Target: min 20%
                 </div>
               </div>
             </div>

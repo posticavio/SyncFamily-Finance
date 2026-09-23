@@ -165,10 +165,10 @@ export const CategoryIcon: React.FC<CategoryIconProps> = ({
   // Determinazione icona e colore in base alle specifiche
   const isTransfer = isGiroconto || tipo === 'GIROCONTO' || name === 'GIROCONTO';
   
-  // Se è specificato il tipo, usiamo la codifica colore obbligatoria
+  // Se è specificato il colore esplicito, diamo priorità ad esso (es. rosso scuro per essenziali, arancione per extra)
   const resolvedColor = isTransfer 
-    ? TYPE_ICON_COLORS.GIROCONTO 
-    : (tipo ? TYPE_ICON_COLORS[tipo] : (color || '#4f46e5'));
+    ? (color || TYPE_ICON_COLORS.GIROCONTO)
+    : (color || (tipo ? TYPE_ICON_COLORS[tipo] : '#4f46e5'));
 
   // Icona unificata per tutti i giroconti
   const resolvedName = isTransfer ? 'ArrowLeftRight' : name;

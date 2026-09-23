@@ -18,17 +18,30 @@ import {
   SlidersHorizontal,
   Info,
   Hash,
-  FolderKanban
+  FolderKanban,
+  Paperclip,
+  FileText,
+  ExternalLink,
+  Loader2,
+  Landmark,
+  CreditCard,
+  Banknote,
+  PiggyBank,
+  Coins,
+  Sun,
+  Moon
 } from 'lucide-react';
-import { Movement, Subcategory, Account, Fund, MovementType, TransactionTemplate, Project } from '../types';
+import { Movement, Subcategory, Account, Fund, MovementType, MovementNecessity, TransactionTemplate, Project, MovementAttachment, getSubcategoryNecessity } from '../types';
 import { MovementService } from '../services/MovementService';
 import { CategoryService } from '../services/CategoryService';
 import { AccountService } from '../services/AccountService';
 import { TemplateService } from '../services/TemplateService';
 import { ProjectService } from '../services/ProjectService';
+import { GoogleDriveService } from '../services/GoogleDriveService';
 import { subscribeToDB } from '../services/store';
 import { CategoryIcon } from './CategoryIcon';
 import { TransactionTemplateSelector } from './TransactionTemplateSelector';
+import { useTheme } from '../context/ThemeContext';
 import { haptics } from '../utils/haptics';
 import { formatCurrency } from '../utils/formatters';
 
@@ -43,6 +56,22 @@ interface NewTransactionModalProps {
   templates?: TransactionTemplate[];
 }
 
+export const getDefaultAccountId = (accounts: Account[]): string => {
+  if (!accounts || accounts.length === 0) return '';
+  // 1. Priorità massima: Conto 'REV | Vio' (case-insensitive)
+  const revVio = accounts.find(a => a.nome_conto && a.nome_conto.trim().toLowerCase().includes('rev | vio'));
+  if (revVio) return revVio.id;
+  // 2. Conto che inizia con 'rev' (es. Revolut Vio)
+  const revAny = accounts.find(a => a.nome_conto && a.nome_conto.trim().toLowerCase().startsWith('rev'));
+  if (revAny) return revAny.id;
+  // 3. Conto contrassegnato come conto_principale
+  const mainAcc = accounts.find(a => a.conto_principale && a.attivo !== false);
+  if (mainAcc) return mainAcc.id;
+  // 4. Primo conto attivo
+  const active = accounts.find(a => a.attivo !== false);
+  return active ? active.id : accounts[0]?.id || '';
+};
+
 export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
   isOpen,
   onClose,
@@ -54,6 +83,7 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
   templates: initialTemplates
 }) => {
   const isEditing = !!initialMovement && Boolean(initialMovement.id && initialMovement.id.trim() !== '');
+  const { isDark, toggleTheme } = useTheme();
 
   // Core Form State
   const [tipologia, setTipologia] = useState<MovementType>(initialMovement?.tipologia || 'USCITA');
@@ -65,21 +95,115 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
     initialMovement?.sottocategoria_id || (subcategories.find(s => s.preferita)?.id || subcategories[0]?.id || '')
   );
   const [contoOrigine, setContoOrigine] = useState<string>(
-    initialMovement?.conto_origine || (accounts.find(a => a.conto_principale)?.id || accounts[0]?.id || '')
+    initialMovement?.conto_origine || getDefaultAccountId(accounts)
   );
   const [contoDestinazione, setContoDestinazione] = useState<string>(
-    initialMovement?.conto_destinazione || (accounts[1]?.id || '')
+    initialMovement?.conto_destinazione || (accounts.find(a => a.id !== (initialMovement?.conto_origine || getDefaultAccountId(accounts)))?.id || accounts[1]?.id || '')
   );
   const [dataMovimento, setDataMovimento] = useState<string>(
     initialMovement?.data || new Date().toISOString().split('T')[0]
   );
   const [natura, setNatura] = useState<'FISSA' | 'VARIABILE'>(initialMovement?.natura || 'VARIABILE');
-  const [necessita, setNecessita] = useState<'BISOGNO' | 'DESIDERIO' | 'RISPARMIO'>(initialMovement?.necessita || 'BISOGNO');
+  const [necessita, setNecessita] = useState<MovementNecessity>(() => {
+    if (initialMovement?.necessita) {
+      if (initialMovement.necessita === 'BISOGNO') return 'DEVO';
+      if (initialMovement.necessita === 'DESIDERIO') return 'VOGLIO';
+      if (initialMovement.necessita === 'RISPARMIO') return 'VOGLIO';
+      return initialMovement.necessita;
+    }
+    return 'DEVO';
+  });
   const [note, setNote] = useState<string>(initialMovement?.note || '');
   const [tag, setTag] = useState<string>(
     initialMovement?.tag || (initialMovement?.tags && initialMovement?.tags[0]) || ''
   );
   const [progettoId, setProgettoId] = useState<string | null>(initialMovement?.progetto_id || null);
+  const [allegati, setAllegati] = useState<MovementAttachment[]>(initialMovement?.allegati || []);
+  const [uploadingFile, setUploadingFile] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sincronizzazione / Reset all'apertura del modale o cambio initialMovement
+  useEffect(() => {
+    if (isOpen) {
+      if (initialMovement && initialMovement.id) {
+        setTipologia(initialMovement.tipologia || 'USCITA');
+        setImportoStr(initialMovement.importo > 0 ? initialMovement.importo.toString() : '');
+        setDescrizione(initialMovement.descrizione || '');
+        setSottocategoriaId(initialMovement.sottocategoria_id || (subcategories.find(s => s.preferita)?.id || subcategories[0]?.id || ''));
+        const sourceAcc = initialMovement.conto_origine || getDefaultAccountId(accounts);
+        setContoOrigine(sourceAcc);
+        setContoDestinazione(initialMovement.conto_destinazione || (accounts.find(a => a.id !== sourceAcc)?.id || accounts[1]?.id || ''));
+        setDataMovimento(initialMovement.data || new Date().toISOString().split('T')[0]);
+        setNatura(initialMovement.natura || 'VARIABILE');
+        const initNec = initialMovement.necessita;
+        if (initNec === 'BISOGNO') setNecessita('DEVO');
+        else if (initNec === 'DESIDERIO' || initNec === 'RISPARMIO') setNecessita('VOGLIO');
+        else if (initNec) setNecessita(initNec);
+        else setNecessita('DEVO');
+        setNote(initialMovement.note || '');
+        setTag(initialMovement.tag || (initialMovement.tags && initialMovement.tags[0]) || '');
+        setProgettoId(initialMovement.progetto_id || null);
+        setAllegati(initialMovement.allegati || []);
+      } else {
+        setTipologia('USCITA');
+        setImportoStr('');
+        setDescrizione('');
+        const favSub = subcategories.find(s => s.preferita && s.tipo === 'USCITA') || subcategories.find(s => s.tipo === 'USCITA') || subcategories[0];
+        if (favSub) {
+          setSottocategoriaId(favSub.id);
+          setNecessita(getSubcategoryNecessity(favSub));
+        } else {
+          setNecessita('DEVO');
+        }
+        const defaultAcc = getDefaultAccountId(accounts);
+        setContoOrigine(defaultAcc);
+        const targetAcc = accounts.find(a => a.id !== defaultAcc) || accounts[1];
+        if (targetAcc) setContoDestinazione(targetAcc.id);
+        setDataMovimento(new Date().toISOString().split('T')[0]);
+        setNatura('VARIABILE');
+        setNote('');
+        setTag('');
+        setProgettoId(null);
+        setAllegati([]);
+      }
+      setShowCategoryPicker(false);
+      setErrorMsg(null);
+    }
+  }, [isOpen, initialMovement, accounts, subcategories]);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setUploadingFile(true);
+    setErrorMsg(null);
+    try {
+      const chosenSub = subcategories.find(s => s.id === sottocategoriaId);
+      const parsedAmount = parseFloat(importoStr) || 0;
+      const newAttachments: MovementAttachment[] = [...allegati];
+      const clientId = GoogleDriveService.getClientId();
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const attached = await GoogleDriveService.uploadFile(file, {
+          descrizione: descrizione || 'Movimento',
+          categoria: chosenSub ? chosenSub.nome : 'Generale',
+          importo: parsedAmount,
+          data: dataMovimento
+        });
+        newAttachments.push(attached);
+      }
+      setAllegati(newAttachments);
+      if (!clientId) {
+        setErrorMsg("Nota: Allegato salvato in modalità locale di fallback (indirizzo blob) perché il Google OAuth Client ID non è configurato nelle Impostazioni. Configuralo per il caricamento diretto su Google Drive.");
+      }
+      haptics.success();
+    } catch (err: any) {
+      setErrorMsg(err.message || "Errore durante il caricamento del file su Google Drive.");
+      haptics.error();
+    } finally {
+      setUploadingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [showAdvanced, setShowAdvanced] = useState<boolean>(
@@ -98,6 +222,9 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [categorySearch, setCategorySearch] = useState('');
+  const [showAccountPicker, setShowAccountPicker] = useState<'origin' | 'dest' | null>(null);
+  const [accountSearch, setAccountSearch] = useState('');
+  const [accountTypeFilter, setAccountTypeFilter] = useState<'ALL' | 'BANCA' | 'CARTA' | 'CONTANTI' | 'CONTO_DEPOSITO' | 'FONDO'>('ALL');
   
   // In-Place Subcategory Creation State
   const [showNewSubModal, setShowNewSubModal] = useState(false);
@@ -155,6 +282,18 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
     return () => window.removeEventListener('keydown', handleEsc);
   }, [isOpen, onClose]);
 
+  // Autofocus istantaneo sul campo importo / tastierino numerico all'apertura del modale
+  useEffect(() => {
+    if (isOpen) {
+      const timer = setTimeout(() => {
+        if (amountInputRef.current) {
+          amountInputRef.current.focus();
+        }
+      }, 120);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
+
   // Sync sottocategoria quando cambia tipologia
   useEffect(() => {
     const validSubs = subcategories.filter(s => {
@@ -166,26 +305,125 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
     if (!isCurrentValid && validSubs.length > 0) {
       const fav = validSubs.find(s => s.preferita) || validSubs[0];
       setSottocategoriaId(fav.id);
+      setNecessita(getSubcategoryNecessity(fav));
     }
   }, [tipologia, subcategories]);
 
-  // Lista unificata conti e fondi attivi
+  // Sync conto origine se non ancora impostato e gli account diventano disponibili
+  useEffect(() => {
+    if (!contoOrigine && accounts.length > 0) {
+      setContoOrigine(getDefaultAccountId(accounts));
+    }
+  }, [accounts, contoOrigine]);
+
+  // Sync sottocategoria se non ancora impostata
+  useEffect(() => {
+    if (!sottocategoriaId && subcategories.length > 0) {
+      const validSubs = subcategories.filter(s => tipologia === 'GIROCONTO' ? s.tipo === 'GIROCONTO' : s.tipo === tipologia);
+      const fav = validSubs.find(s => s.preferita) || validSubs[0] || subcategories[0];
+      if (fav) {
+        setSottocategoriaId(fav.id);
+        setNecessita(getSubcategoryNecessity(fav));
+      }
+    }
+  }, [subcategories, sottocategoriaId, tipologia]);
+
+  // Lista unificata conti e fondi attivi con tipologia strutturata
   const allSources = useMemo(() => [
-    ...accounts.filter(a => a.attivo !== false).map(a => ({ 
-      id: a.id, 
-      name: a.nome_conto, 
-      color: a.colore || '#E31B23', 
-      isFund: false,
-      typeLabel: a.tipo_conto === 'BANCA' ? 'Banca' : a.tipo_conto === 'CONTANTI' ? 'Contanti' : 'Carta'
-    })),
+    ...accounts.filter(a => a.attivo !== false).map(a => {
+      let group: 'BANCA' | 'CARTA' | 'CONTANTI' | 'CONTO_DEPOSITO' | 'FONDO' = 'BANCA';
+      let typeLabel = 'Banca';
+      if (a.tipo_conto === 'BANCA') {
+        group = 'BANCA';
+        typeLabel = 'Banca / C/C';
+      } else if (a.tipo_conto === 'CARTA_DEBITO') {
+        group = 'CARTA';
+        typeLabel = 'Carta di Debito';
+      } else if (a.tipo_conto === 'CARTA_CREDITO') {
+        group = 'CARTA';
+        typeLabel = 'Carta di Credito';
+      } else if (a.tipo_conto === 'CONTANTI') {
+        group = 'CONTANTI';
+        typeLabel = 'Contanti & Spicci';
+      } else if (a.tipo_conto === 'CONTO_DEPOSITO') {
+        group = 'CONTO_DEPOSITO';
+        typeLabel = 'Conto Deposito';
+      }
+
+      return {
+        id: a.id, 
+        name: a.nome_conto, 
+        color: a.colore || '#E31B23', 
+        isFund: false,
+        rawType: a.tipo_conto,
+        group,
+        balance: a.saldo_reale ?? a.saldo_iniziale ?? 0,
+        typeLabel,
+        isMain: Boolean(a.conto_principale),
+        note: a.note
+      };
+    }),
     ...funds.filter(f => f.attivo !== false).map(f => ({ 
       id: f.id, 
       name: f.nome_fondo, 
       color: f.colore || '#10b981', 
       isFund: true,
-      typeLabel: 'Fondo'
+      rawType: 'FONDO' as const,
+      group: 'FONDO' as const,
+      balance: f.saldo_reale ?? f.saldo_iniziale ?? 0,
+      typeLabel: 'Fondo Risparmio',
+      isMain: false,
+      note: f.note
     }))
   ], [accounts, funds]);
+
+  // Conteggio conti per tipologia
+  const accountGroupCounts = useMemo(() => {
+    return {
+      ALL: allSources.length,
+      BANCA: allSources.filter(a => a.group === 'BANCA').length,
+      CARTA: allSources.filter(a => a.group === 'CARTA').length,
+      CONTANTI: allSources.filter(a => a.group === 'CONTANTI').length,
+      CONTO_DEPOSITO: allSources.filter(a => a.group === 'CONTO_DEPOSITO').length,
+      FONDO: allSources.filter(a => a.group === 'FONDO').length,
+    };
+  }, [allSources]);
+
+  // Lista filtrata per Account Picker
+  const filteredAccountsForPicker = useMemo(() => {
+    let list = allSources;
+    if (accountTypeFilter !== 'ALL') {
+      list = list.filter(a => a.group === accountTypeFilter);
+    }
+    if (accountSearch.trim()) {
+      const q = accountSearch.toLowerCase().trim();
+      list = list.filter(a => 
+        a.name.toLowerCase().includes(q) || 
+        a.typeLabel.toLowerCase().includes(q) ||
+        (a.note && a.note.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [allSources, accountTypeFilter, accountSearch]);
+
+  // Raggruppamento dei conti per sezione
+  const groupedAccountsByTypology = useMemo(() => {
+    const definitions: { key: 'BANCA' | 'CARTA' | 'CONTANTI' | 'CONTO_DEPOSITO' | 'FONDO'; title: string; icon: any }[] = [
+      { key: 'BANCA', title: 'Banche & Conti Correnti', icon: Landmark },
+      { key: 'CARTA', title: 'Carte di Pagamento (Debito / Credito)', icon: CreditCard },
+      { key: 'CONTANTI', title: 'Contanti & Portafoglio', icon: Banknote },
+      { key: 'CONTO_DEPOSITO', title: 'Conti Deposito & Investimenti', icon: Coins },
+      { key: 'FONDO', title: 'Fondi Risparmio & Emergenza', icon: PiggyBank },
+    ];
+
+    return definitions.map(def => {
+      const items = filteredAccountsForPicker.filter(a => a.group === def.key);
+      return {
+        ...def,
+        items
+      };
+    }).filter(g => g.items.length > 0);
+  }, [filteredAccountsForPicker]);
 
   // Conto selezionato
   const selectedOriginAccount = useMemo(() => {
@@ -289,6 +527,15 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
     setImportoStr(nextVal.toString());
   };
 
+  // Seleziona sottocategoria e aggiorna automaticamente la regola 50/30/20 (DEVO, HO_BISOGNO, VOGLIO)
+  const handleSelectSubcategory = (subId: string) => {
+    const chosen = subcategories.find(s => s.id === subId);
+    setSottocategoriaId(subId);
+    if (chosen) {
+      setNecessita(getSubcategoryNecessity(chosen));
+    }
+  };
+
   // Creazione in-place sottocategoria rapida
   const handleCreateSubcategoryInPlace = async () => {
     if (!newSubName.trim()) {
@@ -303,6 +550,7 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
         preferita: true
       });
       setSottocategoriaId(created.id);
+      setNecessita(getSubcategoryNecessity(created));
       setTipologia(created.tipo);
       setShowNewSubModal(false);
       setShowCategoryPicker(false);
@@ -401,7 +649,8 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
           progetto_id: targetProjectId,
           tag: cleanTag,
           tags: cleanTags,
-          note
+          note,
+          allegati
         });
       } else {
         await MovementService.create({
@@ -418,6 +667,7 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
           tag: cleanTag,
           tags: cleanTags,
           note,
+          allegati,
           origine_dati: 'MANUALE'
         });
       }
@@ -508,14 +758,29 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-slate-100 dark:bg-[#202022] text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white flex items-center justify-center transition-colors"
-            title="Chiudi (Esc)"
-          >
-            <X size={17} strokeWidth={2.2} />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                toggleTheme();
+                haptics.tap();
+              }}
+              className="w-8 h-8 rounded-full bg-slate-100 dark:bg-[#202022] text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white flex items-center justify-center transition-colors"
+              title={isDark ? 'Passa a tema Chiaro' : 'Passa a tema Scuro'}
+              aria-label="Cambia tema Chiaro / Scuro"
+            >
+              {isDark ? <Sun size={15} className="text-amber-400" /> : <Moon size={15} className="text-indigo-500" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 rounded-full bg-slate-100 dark:bg-[#202022] text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white flex items-center justify-center transition-colors"
+              title="Chiudi (Esc)"
+            >
+              <X size={17} strokeWidth={2.2} />
+            </button>
+          </div>
         </div>
 
         {/* Error Notification Banner */}
@@ -624,103 +889,225 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
               </div>
             </div>
 
-            {/* 3. CONTI DI ADDEBITO / ACCREDITO */}
-            <div className="bg-slate-50 dark:bg-[#1C1C1E] rounded-[22px] border border-slate-200/70 dark:border-white/5 p-3 space-y-2 shadow-xs">
+            {/* 3. CONTI DI ADDEBITO / ACCREDITO - Samsung One UI Selector */}
+            <div className="bg-slate-50 dark:bg-[#1C1C1E] rounded-[22px] border border-slate-200/70 dark:border-white/5 p-3 space-y-2.5 shadow-xs">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  {tipologia === 'USCITA' 
-                    ? 'Addebito su Conto' 
-                    : tipologia === 'ENTRATA' 
-                      ? 'Accredito su Conto' 
-                      : 'Da Conto Origine'}
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                  <Wallet size={12} className="text-slate-400" />
+                  <span>
+                    {tipologia === 'USCITA' 
+                      ? 'Addebito su Conto' 
+                      : tipologia === 'ENTRATA' 
+                        ? 'Accredito su Conto' 
+                        : 'Conti Giroconto'}
+                  </span>
                 </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowNewAccountModal(true);
-                    haptics.tap();
-                  }}
-                  className="text-[11px] font-bold text-[#E31B23] dark:text-red-400 hover:underline flex items-center gap-0.5 cursor-pointer"
-                >
-                  <Plus size={12} strokeWidth={2.5} />
-                  <span>Nuovo</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAccountPicker('origin');
+                      haptics.tap();
+                    }}
+                    className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <span>Tutti i conti ({allSources.length})</span>
+                    <ChevronRight size={12} strokeWidth={2.5} />
+                  </button>
+                  <span className="text-slate-300 dark:text-slate-700">|</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowNewAccountModal(true);
+                      haptics.tap();
+                    }}
+                    className="text-[11px] font-bold text-[#E31B23] dark:text-red-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <Plus size={12} strokeWidth={2.5} />
+                    <span>Nuovo</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Wrapping Grid of Active Accounts / Funds */}
-              <div className="flex flex-wrap items-center gap-1.5 py-1 max-h-48 overflow-y-auto pr-1">
-                {allSources.map(acc => {
-                  const isSelected = contoOrigine === acc.id;
-                  return (
-                    <button
-                      key={acc.id}
-                      type="button"
-                      onClick={() => {
-                        setContoOrigine(acc.id);
-                        haptics.tap();
-                      }}
-                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border flex items-center gap-1.5 transition-all flex-shrink-0 active:scale-95 cursor-pointer ${
-                        isSelected
-                          ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-slate-900 dark:border-white shadow-xs ring-1 ring-slate-900/20 dark:ring-white/30'
-                          : 'bg-white dark:bg-[#242426] text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-white/5 hover:border-slate-300 dark:hover:border-white/20'
-                      }`}
-                    >
-                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: acc.color }} />
-                      <span className="whitespace-nowrap">{acc.name}</span>
-                      {acc.isFund && (
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
-                          isSelected ? 'bg-slate-800 text-slate-200 dark:bg-slate-200 dark:text-slate-900' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
-                        }`}>
-                          Fondo
+              {tipologia === 'GIROCONTO' ? (
+                /* Layout compatto per Giroconto: Da Conto -> A Conto con click diretto al selettore */
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {/* Origine */}
+                  <div 
+                    onClick={() => {
+                      setShowAccountPicker('origin');
+                      haptics.tap();
+                    }}
+                    className="p-2.5 bg-white dark:bg-[#242426] rounded-2xl border border-slate-200/80 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20 transition-all cursor-pointer flex items-center justify-between group active:scale-[0.99]"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div 
+                        className="w-8 h-8 rounded-xl flex items-center justify-center text-white flex-shrink-0 shadow-2xs text-xs font-bold"
+                        style={{ backgroundColor: selectedOriginAccount?.color || '#E31B23' }}
+                      >
+                        {selectedOriginAccount?.isFund ? (
+                          <PiggyBank size={15} />
+                        ) : selectedOriginAccount?.group === 'BANCA' ? (
+                          <Landmark size={15} />
+                        ) : selectedOriginAccount?.group === 'CARTA' ? (
+                          <CreditCard size={15} />
+                        ) : selectedOriginAccount?.group === 'CONTANTI' ? (
+                          <Banknote size={15} />
+                        ) : (
+                          <Coins size={15} />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                          Da Conto
                         </span>
-                      )}
-                      {isSelected && <Check size={12} strokeWidth={2.5} className="flex-shrink-0" />}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Giroconto Conto Destinazione */}
-              {tipologia === 'GIROCONTO' && (
-                <div className="pt-2 border-t border-slate-200/60 dark:border-white/5 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider flex items-center gap-1">
-                      <ArrowLeftRight size={11} />
-                      <span>A Conto Destinazione</span>
-                    </span>
+                        <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                          {selectedOriginAccount?.name || 'Seleziona'}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0 ml-2">
+                      <span className="text-[11px] font-bold font-numeric tabular-nums text-slate-600 dark:text-slate-300 block">
+                        {formatCurrency(selectedOriginAccount?.balance ?? 0)}
+                      </span>
+                      <span className="text-[9px] text-indigo-600 dark:text-indigo-400 font-semibold group-hover:underline">
+                        Cambia
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-1.5 py-1 max-h-48 overflow-y-auto pr-1">
-                    {allSources.filter(acc => acc.id !== contoOrigine).map(acc => {
-                      const isSelected = contoDestinazione === acc.id;
-                      return (
-                        <button
-                          key={acc.id}
-                          type="button"
-                          onClick={() => {
-                            setContoDestinazione(acc.id);
-                            haptics.tap();
-                          }}
-                          className={`px-3 py-1.5 rounded-full text-xs font-semibold border flex items-center gap-1.5 transition-all flex-shrink-0 active:scale-95 cursor-pointer ${
-                            isSelected
-                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs ring-1 ring-indigo-500/30'
-                              : 'bg-white dark:bg-[#242426] text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-white/5 hover:border-slate-300 dark:hover:border-white/20'
-                          }`}
-                        >
-                          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: acc.color }} />
-                          <span className="whitespace-nowrap">{acc.name}</span>
-                          {acc.isFund && (
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
-                              isSelected ? 'bg-indigo-700 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
-                            }`}>
-                              Fondo
+                  {/* Destinazione */}
+                  <div 
+                    onClick={() => {
+                      setShowAccountPicker('dest');
+                      haptics.tap();
+                    }}
+                    className="p-2.5 bg-white dark:bg-[#242426] rounded-2xl border border-indigo-200/80 dark:border-indigo-900/50 hover:border-indigo-300 transition-all cursor-pointer flex items-center justify-between group active:scale-[0.99]"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div 
+                        className="w-8 h-8 rounded-xl flex items-center justify-center text-white flex-shrink-0 shadow-2xs text-xs font-bold"
+                        style={{ backgroundColor: selectedDestAccount?.color || '#6366f1' }}
+                      >
+                        {selectedDestAccount?.isFund ? (
+                          <PiggyBank size={15} />
+                        ) : selectedDestAccount?.group === 'BANCA' ? (
+                          <Landmark size={15} />
+                        ) : selectedDestAccount?.group === 'CARTA' ? (
+                          <CreditCard size={15} />
+                        ) : selectedDestAccount?.group === 'CONTANTI' ? (
+                          <Banknote size={15} />
+                        ) : (
+                          <Coins size={15} />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block">
+                          A Conto
+                        </span>
+                        <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                          {selectedDestAccount?.name || 'Seleziona'}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0 ml-2">
+                      <span className="text-[11px] font-bold font-numeric tabular-nums text-indigo-600 dark:text-indigo-400 block">
+                        {formatCurrency(selectedDestAccount?.balance ?? 0)}
+                      </span>
+                      <span className="text-[9px] text-indigo-600 dark:text-indigo-400 font-semibold group-hover:underline">
+                        Cambia
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* Card Selettore Principale con click per aprire il drawer organizzato per tipologia */
+                <div className="space-y-2">
+                  <div 
+                    onClick={() => {
+                      setShowAccountPicker('origin');
+                      haptics.tap();
+                    }}
+                    className="p-2.5 bg-white dark:bg-[#242426] rounded-2xl border border-slate-200/80 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20 transition-all cursor-pointer flex items-center justify-between group shadow-2xs active:scale-[0.99]"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div 
+                        className="w-9 h-9 rounded-xl flex items-center justify-center text-white flex-shrink-0 shadow-2xs font-bold"
+                        style={{ backgroundColor: selectedOriginAccount?.color || '#E31B23' }}
+                      >
+                        {selectedOriginAccount?.isFund ? (
+                          <PiggyBank size={17} />
+                        ) : selectedOriginAccount?.group === 'BANCA' ? (
+                          <Landmark size={17} />
+                        ) : selectedOriginAccount?.group === 'CARTA' ? (
+                          <CreditCard size={17} />
+                        ) : selectedOriginAccount?.group === 'CONTANTI' ? (
+                          <Banknote size={17} />
+                        ) : (
+                          <Coins size={17} />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">
+                            {selectedOriginAccount?.name || 'Seleziona Conto'}
+                          </span>
+                          <span className="text-[9.5px] px-1.5 py-0.2 rounded-full font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex-shrink-0">
+                            {selectedOriginAccount?.typeLabel}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 truncate">
+                          {selectedOriginAccount?.isMain ? 'Conto Principale predefinito' : selectedOriginAccount?.note || 'Tocca per sfogliare per tipologia'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                      <div className="text-right">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+                          Saldo Attuale
+                        </span>
+                        <span className={`text-xs sm:text-sm font-bold font-numeric tabular-nums ${
+                          (selectedOriginAccount?.balance ?? 0) >= 0 ? 'text-slate-900 dark:text-white' : 'text-rose-600 dark:text-rose-400'
+                        }`}>
+                          {formatCurrency(selectedOriginAccount?.balance ?? 0)}
+                        </span>
+                      </div>
+                      <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white flex items-center justify-center transition-colors">
+                        <ChevronRight size={14} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Micro-Chips rapidi a riga singola scrollabile orizzontalmente per cambio immediato */}
+                  {allSources.length > 1 && (
+                    <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5">
+                      {allSources.map(acc => {
+                        const isSelected = contoOrigine === acc.id;
+                        return (
+                          <button
+                            key={acc.id}
+                            type="button"
+                            onClick={() => {
+                              setContoOrigine(acc.id);
+                              haptics.tap();
+                            }}
+                            className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border flex items-center gap-1.5 transition-all flex-shrink-0 active:scale-95 cursor-pointer ${
+                              isSelected
+                                ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-slate-900 dark:border-white shadow-2xs ring-1 ring-slate-900/20'
+                                : 'bg-white dark:bg-[#242426] text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-white/5 hover:border-slate-300'
+                            }`}
+                          >
+                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: acc.color }} />
+                            <span className="truncate max-w-[110px]">{acc.name}</span>
+                            <span className="text-[9.5px] opacity-70 tabular-nums font-numeric">
+                              {formatCurrency(acc.balance, { hideSymbol: true })}€
                             </span>
-                          )}
-                          {isSelected && <Check size={12} strokeWidth={2.5} className="flex-shrink-0" />}
-                        </button>
-                      );
-                    })}
-                  </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -763,9 +1150,22 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
                     background={true} 
                   />
                   <div className="truncate">
-                    <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                      {selectedSub?.nome || 'Seleziona Categoria'}
-                    </p>
+                    <div className="flex items-center gap-1.5 truncate">
+                      <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                        {selectedSub?.nome || 'Seleziona Categoria'}
+                      </p>
+                      {tipologia === 'USCITA' && selectedSub && (
+                        <span className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded-md shrink-0 ${
+                          necessita === 'DEVO' 
+                            ? 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/20' 
+                            : necessita === 'HO_BISOGNO'
+                            ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                            : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                        }`}>
+                          {necessita === 'DEVO' ? 'Devo 50%' : necessita === 'HO_BISOGNO' ? 'Ho bisogno 30%' : 'Voglio 20%'}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
                       {selectedSub?.categoria_padre || 'Nessuna macro-categoria'}
                     </p>
@@ -789,7 +1189,7 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
                           key={sub.id}
                           type="button"
                           onClick={() => {
-                            setSottocategoriaId(sub.id);
+                            handleSelectSubcategory(sub.id);
                             haptics.tap();
                           }}
                           className={`px-2 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1 transition-all active:scale-95 border flex-shrink-0 cursor-pointer ${
@@ -1002,39 +1402,39 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
                     <div className="grid grid-cols-3 gap-0.5 bg-white dark:bg-[#242426] p-0.5 rounded-lg border border-slate-200/80 dark:border-white/10">
                       <button
                         type="button"
-                        onClick={() => { setNecessita('BISOGNO'); haptics.tap(); }}
-                        className={`py-1 rounded text-[9px] font-semibold transition-all cursor-pointer ${
-                          necessita === 'BISOGNO'
-                            ? 'bg-emerald-600 text-white shadow-xs'
-                            : 'text-slate-600 dark:text-slate-400'
+                        onClick={() => { setNecessita('DEVO'); haptics.tap(); }}
+                        className={`py-1 rounded text-[9.5px] font-bold transition-all cursor-pointer ${
+                          necessita === 'DEVO' || necessita === 'BISOGNO'
+                            ? 'bg-[#E31B23] text-white shadow-xs'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                         }`}
-                        title="Bisogno primario (50%)"
+                        title="Spese fisse e obblighi inderogabili (50%)"
                       >
-                        Bisogno
+                        Devo (50%)
                       </button>
                       <button
                         type="button"
-                        onClick={() => { setNecessita('DESIDERIO'); haptics.tap(); }}
-                        className={`py-1 rounded text-[9px] font-semibold transition-all cursor-pointer ${
-                          necessita === 'DESIDERIO'
+                        onClick={() => { setNecessita('HO_BISOGNO'); haptics.tap(); }}
+                        className={`py-1 rounded text-[9.5px] font-bold transition-all cursor-pointer ${
+                          necessita === 'HO_BISOGNO'
                             ? 'bg-amber-500 text-white shadow-xs'
-                            : 'text-slate-600 dark:text-slate-400'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                         }`}
-                        title="Svago e desideri (30%)"
+                        title="Necessità e bisogni quotidiani (30%)"
                       >
-                        Svago
+                        Ho bisogno (30%)
                       </button>
                       <button
                         type="button"
-                        onClick={() => { setNecessita('RISPARMIO'); haptics.tap(); }}
-                        className={`py-1 rounded text-[9px] font-semibold transition-all cursor-pointer ${
-                          necessita === 'RISPARMIO'
-                            ? 'bg-blue-600 text-white shadow-xs'
-                            : 'text-slate-600 dark:text-slate-400'
+                        onClick={() => { setNecessita('VOGLIO'); haptics.tap(); }}
+                        className={`py-1 rounded text-[9.5px] font-bold transition-all cursor-pointer ${
+                          necessita === 'VOGLIO' || necessita === 'DESIDERIO' || necessita === 'RISPARMIO'
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                         }`}
-                        title="Risparmio e investimenti (20%)"
+                        title="Desideri, svago ed extra personali (20%)"
                       >
-                        Risparmio
+                        Voglio (20%)
                       </button>
                     </div>
                   </div>
@@ -1052,6 +1452,94 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
                     placeholder="Dettagli, scontrino o riferimento..."
                     className="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-[#242426] text-slate-900 dark:text-white rounded-lg border border-slate-200/80 dark:border-white/10 outline-none focus:border-[#E31B23]"
                   />
+                </div>
+
+                {/* Google Drive Attachments Section */}
+                <div className="pt-2 border-t border-slate-200/60 dark:border-white/5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                      <Paperclip size={11} className="text-indigo-500" />
+                      <span>Allegati Google Drive ({allegati.length})</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        haptics.tap();
+                        try {
+                          const clientId = GoogleDriveService.getClientId();
+                          if (clientId) {
+                            setUploadingFile(true);
+                            setErrorMsg(null);
+                            await GoogleDriveService.getAccessToken();
+                            setUploadingFile(false);
+                          }
+                          fileInputRef.current?.click();
+                        } catch (err: any) {
+                          setUploadingFile(false);
+                          // If auth fails or cancelled, still allow local attachment fallback
+                          fileInputRef.current?.click();
+                        }
+                      }}
+                      disabled={uploadingFile}
+                      className="px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                    >
+                      {uploadingFile ? (
+                        <>
+                          <Loader2 size={12} className="animate-spin" />
+                          <span>Caricamento...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Plus size={12} strokeWidth={2.5} />
+                          <span>Aggiungi Scontrino / File</span>
+                        </>
+                      )}
+                    </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={handleFileSelect}
+                    />
+                  </div>
+
+                  {allegati.length > 0 && (
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                      {allegati.map((att, idx) => (
+                        <div key={att.id || idx} className="flex items-center justify-between p-2 bg-white dark:bg-[#242426] rounded-xl border border-slate-200/80 dark:border-white/10 text-xs">
+                          <div className="flex items-center gap-2 overflow-hidden">
+                            <FileText size={14} className="text-indigo-500 flex-shrink-0" />
+                            <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">{att.name}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {att.webViewLink && (
+                              <a
+                                href={att.webViewLink}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="p-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-colors"
+                                title="Apri su Google Drive"
+                              >
+                                <ExternalLink size={12} />
+                              </a>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAllegati(allegati.filter((_, i) => i !== idx));
+                                haptics.tap();
+                              }}
+                              className="p-1 rounded bg-rose-50 dark:bg-rose-950/40 text-rose-600 hover:text-rose-700 transition-colors"
+                              title="Rimuovi allegato"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Progetto select se esistente */}
@@ -1152,6 +1640,350 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
 
         {/* --- OVERLAYS & MODALS --- */}
 
+        {/* ACCOUNT PICKER DRAWER / SHEET (Organized by Typology) */}
+        {showAccountPicker && (
+          <div className="absolute inset-0 z-30 bg-white dark:bg-[#121212] flex flex-col animate-in slide-in-from-bottom duration-200">
+            {/* Account Picker Header */}
+            <div className="p-3.5 border-b border-slate-100 dark:border-[#222224] flex items-center justify-between gap-2 flex-shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAccountPicker(null);
+                    setAccountSearch('');
+                  }}
+                  className="w-8 h-8 rounded-full bg-slate-100 dark:bg-[#202022] text-slate-600 dark:text-slate-300 flex items-center justify-center hover:bg-slate-200 transition-colors flex-shrink-0"
+                >
+                  <X size={16} />
+                </button>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                    {showAccountPicker === 'dest' 
+                      ? 'Scegli Conto di Destinazione' 
+                      : tipologia === 'ENTRATA' 
+                        ? 'Scegli Conto di Accredito' 
+                        : tipologia === 'GIROCONTO' 
+                          ? 'Scegli Conto Origine' 
+                          : 'Scegli Conto di Addebito'}
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    {filteredAccountsForPicker.length} conti disponibili divisi per tipologia
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowNewAccountModal(true);
+                  haptics.tap();
+                }}
+                className="px-3 py-1.5 bg-red-50 dark:bg-red-950/60 text-[#E31B23] dark:text-red-400 rounded-full text-xs font-bold flex items-center gap-1 border border-red-200 dark:border-red-900/60 flex-shrink-0 active:scale-95 transition-all"
+              >
+                <Plus size={13} strokeWidth={2.5} />
+                <span>Nuovo Conto</span>
+              </button>
+            </div>
+
+            {/* Account Search Input */}
+            <div className="p-3 border-b border-slate-100 dark:border-[#222224] flex-shrink-0 space-y-2.5">
+              <div className="relative flex items-center">
+                <Search size={15} className="absolute left-3 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  value={accountSearch}
+                  onChange={(e) => setAccountSearch(e.target.value)}
+                  placeholder="Cerca per nome, tipologia o banca..."
+                  autoFocus
+                  className="w-full pl-9 pr-8 py-2 text-xs bg-slate-100 dark:bg-[#202022] text-slate-900 dark:text-white rounded-xl outline-none font-medium placeholder:text-slate-400 focus:ring-1 focus:ring-slate-300 dark:focus:ring-white/20"
+                />
+                {accountSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setAccountSearch('')}
+                    className="absolute right-2.5 text-slate-400 hover:text-slate-600"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              {/* Typology Filter Pills (Samsung One UI Category Tabs) */}
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAccountTypeFilter('ALL');
+                    haptics.tap();
+                  }}
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all flex-shrink-0 flex items-center gap-1.5 cursor-pointer active:scale-95 ${
+                    accountTypeFilter === 'ALL'
+                      ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-slate-900 dark:border-white shadow-2xs'
+                      : 'bg-white dark:bg-[#202022] text-slate-600 dark:text-slate-300 border-slate-200/80 dark:border-white/5 hover:border-slate-300'
+                  }`}
+                >
+                  <span>Tutti</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    accountTypeFilter === 'ALL' ? 'bg-slate-800 text-slate-200 dark:bg-slate-200 dark:text-slate-900' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                  }`}>
+                    {accountGroupCounts.ALL}
+                  </span>
+                </button>
+
+                {accountGroupCounts.BANCA > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccountTypeFilter('BANCA');
+                      haptics.tap();
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all flex-shrink-0 flex items-center gap-1.5 cursor-pointer active:scale-95 ${
+                      accountTypeFilter === 'BANCA'
+                        ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-slate-900 dark:border-white shadow-2xs'
+                        : 'bg-white dark:bg-[#202022] text-slate-600 dark:text-slate-300 border-slate-200/80 dark:border-white/5 hover:border-slate-300'
+                    }`}
+                  >
+                    <Landmark size={13} />
+                    <span>Banche</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                      accountTypeFilter === 'BANCA' ? 'bg-slate-800 text-slate-200 dark:bg-slate-200 dark:text-slate-900' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                    }`}>
+                      {accountGroupCounts.BANCA}
+                    </span>
+                  </button>
+                )}
+
+                {accountGroupCounts.CARTA > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccountTypeFilter('CARTA');
+                      haptics.tap();
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all flex-shrink-0 flex items-center gap-1.5 cursor-pointer active:scale-95 ${
+                      accountTypeFilter === 'CARTA'
+                        ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-slate-900 dark:border-white shadow-2xs'
+                        : 'bg-white dark:bg-[#202022] text-slate-600 dark:text-slate-300 border-slate-200/80 dark:border-white/5 hover:border-slate-300'
+                    }`}
+                  >
+                    <CreditCard size={13} />
+                    <span>Carte</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                      accountTypeFilter === 'CARTA' ? 'bg-slate-800 text-slate-200 dark:bg-slate-200 dark:text-slate-900' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                    }`}>
+                      {accountGroupCounts.CARTA}
+                    </span>
+                  </button>
+                )}
+
+                {accountGroupCounts.CONTANTI > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccountTypeFilter('CONTANTI');
+                      haptics.tap();
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all flex-shrink-0 flex items-center gap-1.5 cursor-pointer active:scale-95 ${
+                      accountTypeFilter === 'CONTANTI'
+                        ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-slate-900 dark:border-white shadow-2xs'
+                        : 'bg-white dark:bg-[#202022] text-slate-600 dark:text-slate-300 border-slate-200/80 dark:border-white/5 hover:border-slate-300'
+                    }`}
+                  >
+                    <Banknote size={13} />
+                    <span>Contanti</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                      accountTypeFilter === 'CONTANTI' ? 'bg-slate-800 text-slate-200 dark:bg-slate-200 dark:text-slate-900' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                    }`}>
+                      {accountGroupCounts.CONTANTI}
+                    </span>
+                  </button>
+                )}
+
+                {accountGroupCounts.CONTO_DEPOSITO > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccountTypeFilter('CONTO_DEPOSITO');
+                      haptics.tap();
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all flex-shrink-0 flex items-center gap-1.5 cursor-pointer active:scale-95 ${
+                      accountTypeFilter === 'CONTO_DEPOSITO'
+                        ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-slate-900 dark:border-white shadow-2xs'
+                        : 'bg-white dark:bg-[#202022] text-slate-600 dark:text-slate-300 border-slate-200/80 dark:border-white/5 hover:border-slate-300'
+                    }`}
+                  >
+                    <Coins size={13} />
+                    <span>Depositi</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                      accountTypeFilter === 'CONTO_DEPOSITO' ? 'bg-slate-800 text-slate-200 dark:bg-slate-200 dark:text-slate-900' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                    }`}>
+                      {accountGroupCounts.CONTO_DEPOSITO}
+                    </span>
+                  </button>
+                )}
+
+                {accountGroupCounts.FONDO > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccountTypeFilter('FONDO');
+                      haptics.tap();
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all flex-shrink-0 flex items-center gap-1.5 cursor-pointer active:scale-95 ${
+                      accountTypeFilter === 'FONDO'
+                        ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-slate-900 dark:border-white shadow-2xs'
+                        : 'bg-white dark:bg-[#202022] text-slate-600 dark:text-slate-300 border-slate-200/80 dark:border-white/5 hover:border-slate-300'
+                    }`}
+                  >
+                    <PiggyBank size={13} />
+                    <span>Fondi</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                      accountTypeFilter === 'FONDO' ? 'bg-slate-800 text-slate-200 dark:bg-slate-200 dark:text-slate-900' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                    }`}>
+                      {accountGroupCounts.FONDO}
+                    </span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Account Groups List (Cleanly Divided by Typology) */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
+              {groupedAccountsByTypology.length === 0 ? (
+                <div className="py-12 text-center text-slate-400 text-xs">
+                  Nessun conto o fondo trovato per i filtri selezionati.
+                </div>
+              ) : (
+                groupedAccountsByTypology.map(group => {
+                  const IconComp = group.icon;
+                  return (
+                    <div key={group.key} className="space-y-2">
+                      <div className="flex items-center gap-1.5 px-1">
+                        <IconComp size={13} className="text-slate-400" />
+                        <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                          {group.title} ({group.items.length})
+                        </h4>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {group.items.map(acc => {
+                          const currentSelectedId = showAccountPicker === 'dest' ? contoDestinazione : contoOrigine;
+                          const isSelected = currentSelectedId === acc.id;
+                          const isOtherInGiroconto = tipologia === 'GIROCONTO' && (
+                            showAccountPicker === 'dest' ? contoOrigine === acc.id : contoDestinazione === acc.id
+                          );
+
+                          return (
+                            <button
+                              key={acc.id}
+                              type="button"
+                              onClick={() => {
+                                if (showAccountPicker === 'dest') {
+                                  setContoDestinazione(acc.id);
+                                } else {
+                                  setContoOrigine(acc.id);
+                                }
+                                setShowAccountPicker(null);
+                                setAccountSearch('');
+                                haptics.tap();
+                              }}
+                              className={`p-3 rounded-2xl border text-left flex items-center justify-between gap-3 transition-all active:scale-[0.98] cursor-pointer ${
+                                isSelected
+                                  ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-slate-900 dark:border-white shadow-md ring-1 ring-slate-900/20 dark:ring-white/30'
+                                  : 'bg-slate-50 dark:bg-[#1E1E20] text-slate-800 dark:text-slate-200 border-slate-200/70 dark:border-white/5 hover:border-slate-300 dark:hover:border-white/20'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3 min-w-0 flex-1">
+                                <div 
+                                  className="w-10 h-10 rounded-xl flex items-center justify-center text-white flex-shrink-0 shadow-2xs font-bold"
+                                  style={{ backgroundColor: acc.color || '#E31B23' }}
+                                >
+                                  {acc.isFund ? (
+                                    <PiggyBank size={18} />
+                                  ) : acc.group === 'BANCA' ? (
+                                    <Landmark size={18} />
+                                  ) : acc.group === 'CARTA' ? (
+                                    <CreditCard size={18} />
+                                  ) : acc.group === 'CONTANTI' ? (
+                                    <Banknote size={18} />
+                                  ) : (
+                                    <Coins size={18} />
+                                  )}
+                                </div>
+
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5 truncate">
+                                    <span className={`text-xs sm:text-sm font-bold truncate ${
+                                      isSelected ? 'text-white dark:text-slate-900' : 'text-slate-900 dark:text-white'
+                                    }`}>
+                                      {acc.name}
+                                    </span>
+                                    {acc.isMain && (
+                                      <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold flex-shrink-0 ${
+                                        isSelected 
+                                          ? 'bg-amber-400 text-amber-950' 
+                                          : 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300'
+                                      }`}>
+                                        Principale
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    <span className={`text-[10px] font-medium truncate ${
+                                      isSelected ? 'text-slate-300 dark:text-slate-600' : 'text-slate-400'
+                                    }`}>
+                                      {acc.typeLabel}
+                                    </span>
+                                    {acc.note && (
+                                      <>
+                                        <span className="text-[10px] text-slate-400">•</span>
+                                        <span className={`text-[10px] truncate max-w-[130px] ${
+                                          isSelected ? 'text-slate-300 dark:text-slate-600' : 'text-slate-400'
+                                        }`}>
+                                          {acc.note}
+                                        </span>
+                                      </>
+                                    )}
+                                    {isOtherInGiroconto && (
+                                      <span className="text-[9px] px-1 rounded bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold">
+                                        {showAccountPicker === 'dest' ? 'Origine attuale' : 'Destinazione attuale'}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="text-right flex-shrink-0 flex items-center gap-2">
+                                <div>
+                                  <span className={`text-xs sm:text-sm font-bold font-numeric tabular-nums block ${
+                                    isSelected 
+                                      ? 'text-white dark:text-slate-900' 
+                                      : acc.balance >= 0 
+                                        ? 'text-slate-900 dark:text-white' 
+                                        : 'text-rose-600 dark:text-rose-400'
+                                  }`}>
+                                    {formatCurrency(acc.balance)}
+                                  </span>
+                                </div>
+                                {isSelected && (
+                                  <div className="w-5 h-5 rounded-full bg-white dark:bg-slate-900 text-slate-900 dark:text-white flex items-center justify-center flex-shrink-0 shadow-xs">
+                                    <Check size={12} strokeWidth={3} />
+                                  </div>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
         {/* CATEGORY PICKER DRAWER / SHEET */}
         {showCategoryPicker && (
           <div className="absolute inset-0 z-30 bg-white dark:bg-[#121212] flex flex-col animate-in slide-in-from-bottom duration-200">
@@ -1219,26 +2051,44 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                       {subs.map(sub => {
                         const isSelected = sub.id === sottocategoriaId;
+                        const nec = getSubcategoryNecessity(sub);
                         return (
                           <button
                             key={sub.id}
                             type="button"
                             onClick={() => {
-                              setSottocategoriaId(sub.id);
+                              handleSelectSubcategory(sub.id);
                               setShowCategoryPicker(false);
                               haptics.tap();
                             }}
-                            className={`p-2.5 rounded-2xl border text-left flex items-center gap-2.5 transition-all active:scale-95 ${
+                            className={`p-2.5 rounded-2xl border text-left flex items-center justify-between gap-2 transition-all active:scale-95 cursor-pointer ${
                               isSelected
                                 ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-slate-900 dark:border-white shadow-xs'
                                 : 'bg-slate-50 dark:bg-[#1E1E20] text-slate-800 dark:text-slate-200 border-slate-200/60 dark:border-white/5 hover:border-slate-300'
                             }`}
                           >
-                            <CategoryIcon name={sub.icon_name} color={isSelected ? undefined : sub.colore} size={18} background={!isSelected} />
-                            <span className="text-xs font-semibold truncate flex-1">
-                              {sub.nome}
-                            </span>
-                            {isSelected && <Check size={14} strokeWidth={2.5} />}
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <CategoryIcon name={sub.icon_name} color={isSelected ? undefined : sub.colore} size={18} background={!isSelected} />
+                              <div className="min-w-0 flex-1">
+                                <span className="text-xs font-semibold truncate block">
+                                  {sub.nome}
+                                </span>
+                                {sub.tipo === 'USCITA' && (
+                                  <span className={`text-[9px] font-bold block truncate ${
+                                    isSelected 
+                                      ? 'text-white/80 dark:text-slate-900/80' 
+                                      : nec === 'DEVO' 
+                                      ? 'text-red-600 dark:text-red-400' 
+                                      : nec === 'HO_BISOGNO' 
+                                      ? 'text-amber-600 dark:text-amber-400' 
+                                      : 'text-emerald-600 dark:text-emerald-400'
+                                  }`}>
+                                    {nec === 'DEVO' ? 'Devo 50%' : nec === 'HO_BISOGNO' ? 'Ho bisogno 30%' : 'Voglio 20%'}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {isSelected && <Check size={14} strokeWidth={2.5} className="flex-shrink-0" />}
                           </button>
                         );
                       })}

@@ -1,7 +1,7 @@
 export type AccountType = 'BANCA' | 'CARTA_DEBITO' | 'CARTA_CREDITO' | 'CONTANTI' | 'CONTO_DEPOSITO';
 export type MovementType = 'USCITA' | 'ENTRATA' | 'GIROCONTO';
 export type MovementNature = 'FISSA' | 'VARIABILE';
-export type MovementNecessity = 'BISOGNO' | 'DESIDERIO' | 'RISPARMIO';
+export type MovementNecessity = 'DEVO' | 'HO_BISOGNO' | 'VOGLIO' | 'BISOGNO' | 'DESIDERIO' | 'RISPARMIO';
 export type SubcategoryClassification = 'GUADAGNI' | 'SPESE_ESSENZIALI' | 'SPESE_EXTRA';
 export type PlannedStatus = 'PENDENTE' | 'ESEGUITO' | 'ANNULLATO';
 export type DeadlineStatus = 'DA_PAGARE' | 'PAGATA' | 'ANNULLATA';
@@ -77,6 +77,7 @@ export interface Subcategory {
   categoria_padre: string; // E.g. "Alimentazione", "Casa", "Lavoro"
   tipo: MovementType; // ENTRATA o USCITA (derivato per la sottocategoria)
   classificazione?: SubcategoryClassification; // GUADAGNI | SPESE_ESSENZIALI | SPESE_EXTRA
+  necessita?: MovementNecessity; // 'DEVO' (50%) | 'HO_BISOGNO' (30%) | 'VOGLIO' (20%)
   icon_name: string; // Nome icona Lucide monocolore
   colore: string; // Colore hex coerente
   preferita: boolean; // Flag per griglia rapida mobile
@@ -130,6 +131,91 @@ export function getSubcategoryClassification(sub?: Subcategory | null): Subcateg
   return isEssential ? 'SPESE_ESSENZIALI' : 'SPESE_EXTRA';
 }
 
+/**
+ * Risolve la regola 50/30/20 di una sottocategoria:
+ * - DEVO (50%): Spese fisse e obblighi inderogabili (mutuo, affitto, bollette, assicurazioni, tasse, rate)
+ * - HO_BISOGNO (30%): Necessità e bisogni quotidiani (alimentari, salute, trasporti essenziali, farmacia)
+ * - VOGLIO (20%): Desideri, svago, extra, tempo libero, ristoranti, shopping, viaggi e risparmio
+ */
+export function getSubcategoryNecessity(sub?: Subcategory | null): MovementNecessity {
+  if (sub?.necessita) {
+    if (sub.necessita === 'DEVO' || sub.necessita === 'HO_BISOGNO' || sub.necessita === 'VOGLIO') {
+      return sub.necessita;
+    }
+    if (sub.necessita === 'BISOGNO') return 'DEVO';
+    if (sub.necessita === 'DESIDERIO' || sub.necessita === 'RISPARMIO') return 'VOGLIO';
+  }
+  if (!sub) return 'DEVO';
+  if (sub.tipo === 'ENTRATA') return 'DEVO';
+
+  const name = (sub.nome || '').toLowerCase();
+  const parent = (sub.categoria_padre || '').toLowerCase();
+
+  // 1. DEVO (50%) - Spese fisse e impegni inderogabili
+  const isDevo =
+    parent.includes('casa') ||
+    parent.includes('utenze') ||
+    parent.includes('tasse') ||
+    parent.includes('imposte') ||
+    parent.includes('scuola') ||
+    name.includes('mutuo') ||
+    name.includes('affitto') ||
+    name.includes('luce') ||
+    name.includes('gas') ||
+    name.includes('acqua') ||
+    name.includes('internet') ||
+    name.includes('telefonia') ||
+    name.includes('condominio') ||
+    name.includes('assicurazion') ||
+    name.includes('bollo') ||
+    name.includes('tassa') ||
+    name.includes('tari') ||
+    name.includes('rata') ||
+    name.includes('finanziamento') ||
+    name.includes('canone');
+
+  if (isDevo) return 'DEVO';
+
+  // 2. HO BISOGNO (30%) - Necessità quotidiane e bisogni primari
+  const isHoBisogno =
+    parent.includes('aliment') ||
+    parent.includes('spesa') ||
+    parent.includes('salute') ||
+    parent.includes('farmacia') ||
+    parent.includes('trasport') ||
+    parent.includes('auto') ||
+    name.includes('supermercato') ||
+    name.includes('alimentar') ||
+    name.includes('spesa') ||
+    name.includes('farmacia') ||
+    name.includes('medic') ||
+    name.includes('visite') ||
+    name.includes('dottore') ||
+    name.includes('benzina') ||
+    name.includes('carburante') ||
+    name.includes('diesel') ||
+    name.includes('treno') ||
+    name.includes('autobus') ||
+    name.includes('mezzi') ||
+    name.includes('manutenzione') ||
+    name.includes('meccanico') ||
+    name.includes('veterinario');
+
+  if (isHoBisogno) return 'HO_BISOGNO';
+
+  // 3. VOGLIO (20%) - Desideri, svago, extra personali, uscite, shopping, viaggi
+  return 'VOGLIO';
+}
+
+export interface MovementAttachment {
+  id: string; // Google Drive file ID
+  name: string; // File name
+  mimeType: string;
+  webViewLink?: string;
+  thumbnailLink?: string;
+  size?: number;
+}
+
 export interface Movement {
   id: string; // UUID tecnico
   movimento_id: string; // E.g. MOV00001
@@ -151,6 +237,7 @@ export interface Movement {
   origine_dati: 'MANUALE' | 'PIANIFICATO' | 'IMPORTAZIONE' | 'RICORRENZA';
   id_importazione?: string | null;
   note?: string;
+  allegati?: MovementAttachment[];
   created_at: string;
   updated_at: string;
 }

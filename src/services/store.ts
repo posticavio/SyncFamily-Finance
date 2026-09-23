@@ -1,4 +1,4 @@
-import { DatabaseSchema, getSubcategoryClassification } from '../types';
+import { DatabaseSchema, getSubcategoryClassification, getSubcategoryNecessity } from '../types';
 import { db } from './firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { DEFAULT_TRANSACTION_TEMPLATES } from '../data/defaultTemplates';
@@ -133,6 +133,8 @@ const INITIAL_DATABASE: DatabaseSchema = {
       nome: "Supermercato & Spesa",
       categoria_padre: "Alimentazione",
       tipo: "USCITA",
+      classificazione: "SPESE_ESSENZIALI",
+      necessita: "HO_BISOGNO",
       icon_name: "ShoppingCart",
       colore: "#2563eb",
       preferita: true,
@@ -145,6 +147,8 @@ const INITIAL_DATABASE: DatabaseSchema = {
       nome: "Ristoranti & Pizzerie",
       categoria_padre: "Alimentazione",
       tipo: "USCITA",
+      classificazione: "SPESE_EXTRA",
+      necessita: "VOGLIO",
       icon_name: "Utensils",
       colore: "#f97316",
       preferita: true,
@@ -157,6 +161,8 @@ const INITIAL_DATABASE: DatabaseSchema = {
       nome: "Mutuo / Affitto Casa",
       categoria_padre: "Casa",
       tipo: "USCITA",
+      classificazione: "SPESE_ESSENZIALI",
+      necessita: "DEVO",
       icon_name: "Home",
       colore: "#6366f1",
       preferita: true,
@@ -169,6 +175,8 @@ const INITIAL_DATABASE: DatabaseSchema = {
       nome: "Bolletta Luce & Gas",
       categoria_padre: "Casa",
       tipo: "USCITA",
+      classificazione: "SPESE_ESSENZIALI",
+      necessita: "DEVO",
       icon_name: "Zap",
       colore: "#eab308",
       preferita: true,
@@ -181,6 +189,8 @@ const INITIAL_DATABASE: DatabaseSchema = {
       nome: "Internet & Telefonia",
       categoria_padre: "Casa",
       tipo: "USCITA",
+      classificazione: "SPESE_ESSENZIALI",
+      necessita: "DEVO",
       icon_name: "Wifi",
       colore: "#06b6d4",
       preferita: false,
@@ -193,6 +203,8 @@ const INITIAL_DATABASE: DatabaseSchema = {
       nome: "Carburante Auto",
       categoria_padre: "Trasporti",
       tipo: "USCITA",
+      classificazione: "SPESE_ESSENZIALI",
+      necessita: "HO_BISOGNO",
       icon_name: "Fuel",
       colore: "#dc2626",
       preferita: true,
@@ -205,6 +217,8 @@ const INITIAL_DATABASE: DatabaseSchema = {
       nome: "Treno & Mezzi Pubblici",
       categoria_padre: "Trasporti",
       tipo: "USCITA",
+      classificazione: "SPESE_ESSENZIALI",
+      necessita: "HO_BISOGNO",
       icon_name: "Train",
       colore: "#0284c7",
       preferita: false,
@@ -217,6 +231,8 @@ const INITIAL_DATABASE: DatabaseSchema = {
       nome: "Farmacia & Visite",
       categoria_padre: "Salute",
       tipo: "USCITA",
+      classificazione: "SPESE_ESSENZIALI",
+      necessita: "HO_BISOGNO",
       icon_name: "HeartPulse",
       colore: "#10b981",
       preferita: true,
@@ -229,6 +245,8 @@ const INITIAL_DATABASE: DatabaseSchema = {
       nome: "Palestra & Attività",
       categoria_padre: "Tempo Libero",
       tipo: "USCITA",
+      classificazione: "SPESE_EXTRA",
+      necessita: "VOGLIO",
       icon_name: "Dumbbell",
       colore: "#8b5cf6",
       preferita: true,
@@ -241,6 +259,8 @@ const INITIAL_DATABASE: DatabaseSchema = {
       nome: "Abbigliamento & Shopping",
       categoria_padre: "Tempo Libero",
       tipo: "USCITA",
+      classificazione: "SPESE_EXTRA",
+      necessita: "VOGLIO",
       icon_name: "ShoppingBag",
       colore: "#ec4899",
       preferita: false,
@@ -253,6 +273,8 @@ const INITIAL_DATABASE: DatabaseSchema = {
       nome: "Stipendio Principale",
       categoria_padre: "Lavoro",
       tipo: "ENTRATA",
+      classificazione: "GUADAGNI",
+      necessita: "DEVO",
       icon_name: "Briefcase",
       colore: "#059669",
       preferita: true,
@@ -265,6 +287,8 @@ const INITIAL_DATABASE: DatabaseSchema = {
       nome: "Secondo Reddito",
       categoria_padre: "Lavoro",
       tipo: "ENTRATA",
+      classificazione: "GUADAGNI",
+      necessita: "DEVO",
       icon_name: "Banknote",
       colore: "#10b981",
       preferita: false,
@@ -277,6 +301,8 @@ const INITIAL_DATABASE: DatabaseSchema = {
       nome: "Rimborsi & Extra",
       categoria_padre: "Entrate Varie",
       tipo: "ENTRATA",
+      classificazione: "GUADAGNI",
+      necessita: "DEVO",
       icon_name: "Coins",
       colore: "#3b82f6",
       preferita: false,
@@ -289,6 +315,8 @@ const INITIAL_DATABASE: DatabaseSchema = {
       nome: "Giroconto / Trasferimento",
       categoria_padre: "Trasferimenti",
       tipo: "GIROCONTO",
+      classificazione: "SPESE_ESSENZIALI",
+      necessita: "DEVO",
       icon_name: "ArrowLeftRight",
       colore: "#64748b",
       preferita: true,
@@ -301,6 +329,8 @@ const INITIAL_DATABASE: DatabaseSchema = {
       nome: "Finanziamento Auto",
       categoria_padre: "Prestiti & Finanziamenti",
       tipo: "USCITA",
+      classificazione: "SPESE_ESSENZIALI",
+      necessita: "DEVO",
       icon_name: "Car",
       colore: "#ef4444",
       preferita: true,
@@ -313,6 +343,8 @@ const INITIAL_DATABASE: DatabaseSchema = {
       nome: "Ristrutturazione & Lavori Casa",
       categoria_padre: "Casa",
       tipo: "USCITA",
+      classificazione: "SPESE_ESSENZIALI",
+      necessita: "DEVO",
       icon_name: "Hammer",
       colore: "#d97706",
       preferita: true,
@@ -325,6 +357,8 @@ const INITIAL_DATABASE: DatabaseSchema = {
       nome: "Prestito Personale",
       categoria_padre: "Prestiti & Finanziamenti",
       tipo: "USCITA",
+      classificazione: "SPESE_ESSENZIALI",
+      necessita: "DEVO",
       icon_name: "Landmark",
       colore: "#8b5cf6",
       preferita: false,
@@ -1122,7 +1156,22 @@ function loadLocalCache(): DatabaseSchema {
             if (!sub.classificazione) {
               sub.classificazione = getSubcategoryClassification(sub);
             }
+            if (!sub.necessita || sub.necessita === 'BISOGNO' || sub.necessita === 'DESIDERIO' || sub.necessita === 'RISPARMIO') {
+              sub.necessita = getSubcategoryNecessity(sub);
+            }
           });
+          // Se presente un conto 'REV | Vio', impostalo come principale
+          if (parsed.CONTI && parsed.CONTI.length > 0) {
+            const revVio = parsed.CONTI.find((c: any) => c.nome_conto && c.nome_conto.trim().toLowerCase().includes('rev | vio'));
+            if (revVio) {
+              parsed.CONTI.forEach((c: any) => {
+                c.conto_principale = (c.id === revVio.id);
+              });
+              if (parsed.IMPOSTAZIONI) {
+                parsed.IMPOSTAZIONI.conto_principale_id = revVio.id;
+              }
+            }
+          }
           // Assicura array progetti e rimuove eventuali residui fittizi
           if (!parsed.PROGETTI) {
             parsed.PROGETTI = [];
@@ -1253,6 +1302,17 @@ export function initFirestore(): void {
             }
             const mockMovIds = new Set(['mov-mutuo-curr', 'mov-auto-curr', 'mov-ristruttura-curr']);
             cloudData.MOVIMENTI = (cloudData.MOVIMENTI || []).filter((m: any) => !mockMovIds.has(m.id));
+            if (cloudData.CONTI && cloudData.CONTI.length > 0) {
+              const revVio = cloudData.CONTI.find((c: any) => c.nome_conto && c.nome_conto.trim().toLowerCase().includes('rev | vio'));
+              if (revVio && !revVio.conto_principale) {
+                cloudData.CONTI.forEach((c: any) => {
+                  c.conto_principale = (c.id === revVio.id);
+                });
+                if (cloudData.IMPOSTAZIONI) {
+                  cloudData.IMPOSTAZIONI.conto_principale_id = revVio.id;
+                }
+              }
+            }
             DB = cloudData;
             try {
               localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));

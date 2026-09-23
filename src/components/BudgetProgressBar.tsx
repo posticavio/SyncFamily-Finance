@@ -46,23 +46,23 @@ export function getSpendStatus(percent: number, hasBudget: boolean, isStrictlyOv
       barHex: '#ef4444'
     };
   }
-  if (percent >= 100) {
-    // Al 100% senza superamento (es. 814,15 € su 815,00 €)
+  if (percent === 100) {
+    // Al 100% esatto senza superamento: budget perfettamente allineato alle spese
     return {
-      level: 'alert',
-      label: 'Budget al limite',
-      gradientClass: 'from-amber-500 via-orange-500 to-rose-500',
-      badgeBg: 'bg-orange-50 dark:bg-orange-950/40',
-      badgeText: 'text-orange-700 dark:text-orange-400',
-      badgeBorder: 'border-orange-300 dark:border-orange-800',
-      barHex: '#f97316'
+      level: 'optimal',
+      label: 'Budget allineato',
+      gradientClass: 'from-emerald-400 via-emerald-500 to-teal-500',
+      badgeBg: 'bg-emerald-50 dark:bg-emerald-950/40',
+      badgeText: 'text-emerald-700 dark:text-emerald-400',
+      badgeBorder: 'border-emerald-300 dark:border-emerald-800',
+      barHex: '#10b981'
     };
   }
   if (percent >= 85) {
     return {
       level: 'alert',
       label: 'In esaurimento',
-      gradientClass: 'from-amber-500 via-orange-500 to-rose-500',
+      gradientClass: 'from-amber-500 via-orange-500 to-amber-600',
       badgeBg: 'bg-orange-50 dark:bg-orange-950/40',
       badgeText: 'text-orange-700 dark:text-orange-400',
       badgeBorder: 'border-orange-300 dark:border-orange-800',
@@ -185,7 +185,7 @@ export const BudgetProgressBar: React.FC<BudgetProgressBarProps> = ({
   return (
     <div className="w-full space-y-1.5">
       {showDetails && (
-        <div className="flex items-center justify-between text-xs">
+        <div className="flex items-center justify-between text-xs flex-wrap gap-x-3 gap-y-1">
           <div className="flex items-center gap-1.5 min-w-0">
             {isIncome ? (
               <span className="text-[11px] text-slate-500 dark:text-slate-400 font-numeric truncate">
@@ -209,7 +209,7 @@ export const BudgetProgressBar: React.FC<BudgetProgressBarProps> = ({
             )}
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 ml-auto">
             <span className="text-[11px] text-slate-400 dark:text-slate-500 font-numeric">
               {hasBudget ? `su ${formatCurrency(budget)}` : 'Nessun target'}
             </span>
@@ -226,7 +226,7 @@ export const BudgetProgressBar: React.FC<BudgetProgressBarProps> = ({
                   </span>
                   <AlertCircle size={10} className="text-rose-600 dark:text-rose-400 shrink-0" />
                 </>
-              ) : !isIncome && effectivePercent >= 85 ? (
+              ) : !isIncome && effectivePercent >= 85 && effectivePercent < 100 ? (
                 <>
                   <span className="relative flex h-1.5 w-1.5">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>

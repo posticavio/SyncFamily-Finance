@@ -1,5 +1,5 @@
 import { DB, persistDB, generateHumanID, generateUUID } from './store';
-import { Movement, MovementType } from '../types';
+import { Movement, MovementType, MovementNecessity, MovementAttachment, getSubcategoryNecessity } from '../types';
 
 export const MovementService = {
   async getAll(filters?: {
@@ -71,13 +71,14 @@ export const MovementService = {
     conto_destinazione?: string | null;
     sottocategoria_id: string;
     natura?: 'FISSA' | 'VARIABILE';
-    necessita?: 'BISOGNO' | 'DESIDERIO' | 'RISPARMIO';
+    necessita?: MovementNecessity;
     progetto_id?: string | null;
     tag?: string | null;
     tags?: string[];
     fondo_id?: string | null;
     non_contabilizzato?: boolean;
     note?: string;
+    allegati?: MovementAttachment[];
     origine_dati?: 'MANUALE' | 'PIANIFICATO' | 'IMPORTAZIONE' | 'RICORRENZA';
   }): Promise<Movement> {
     if (data.importo <= 0) {
@@ -96,6 +97,9 @@ export const MovementService = {
       ? Array.from(new Set(data.tags.map(t => t.trim()).filter(Boolean)))
       : (cleanTag ? [cleanTag] : []);
 
+    const targetSub = DB.SOTTOCATEGORIE.find(s => s.id === data.sottocategoria_id);
+    const resolvedNecessita = data.necessita || (targetSub ? getSubcategoryNecessity(targetSub) : 'DEVO');
+
     const newMovement: Movement = {
       id: generateUUID(),
       movimento_id: generateHumanID('MOV', 'MOVIMENTI'),
@@ -107,7 +111,7 @@ export const MovementService = {
       conto_destinazione: data.tipologia === 'GIROCONTO' ? (data.conto_destinazione || null) : null,
       sottocategoria_id: data.sottocategoria_id,
       natura: data.natura || 'VARIABILE',
-      necessita: data.necessita || 'BISOGNO',
+      necessita: resolvedNecessita,
       progetto_id: data.progetto_id || null,
       tag: cleanTag,
       tags: cleanTags,
@@ -116,6 +120,7 @@ export const MovementService = {
       non_contabilizzato: !!data.non_contabilizzato,
       origine_dati: data.origine_dati || 'MANUALE',
       note: data.note ? data.note.trim() : '',
+      allegati: data.allegati || [],
       created_at: nowIso,
       updated_at: nowIso
     };

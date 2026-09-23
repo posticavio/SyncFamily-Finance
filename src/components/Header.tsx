@@ -15,7 +15,11 @@ import {
   FileSpreadsheet, 
   Sparkles,
   SlidersHorizontal,
-  ChevronDown
+  ChevronDown,
+  Search,
+  Camera,
+  Calculator,
+  Printer
 } from 'lucide-react';
 import { CloudSyncStatus } from '../services/store';
 import { ThemeToggle } from './ThemeToggle';
@@ -33,6 +37,10 @@ interface HeaderProps {
   onOpenBackup: () => void;
   onOpenCategories?: () => void;
   onOpenReconciliation?: () => void;
+  onOpenSpotlight?: () => void;
+  onOpenReceiptScanner?: () => void;
+  onOpenPurchaseImpact?: () => void;
+  onOpenExportSummary?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -45,7 +53,11 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAccounts,
   onOpenBackup,
   onOpenCategories,
-  onOpenReconciliation
+  onOpenReconciliation,
+  onOpenSpotlight,
+  onOpenReceiptScanner,
+  onOpenPurchaseImpact,
+  onOpenExportSummary
 }) => {
   const [isToolsOpen, setIsToolsOpen] = useState(false);
   const toolsMenuRef = useRef<HTMLDivElement>(null);
@@ -100,247 +112,295 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
-  const isManagementActive = ['CONTI', 'PROGETTI', 'NOTE', 'IMPOSTAZIONI'].includes(activeTab);
+  const isToolsActive = ['PROGETTI', 'NOTE', 'REPORT_AI', 'IMPOSTAZIONI'].includes(activeTab);
 
   const navTabs: { id: AppTabType; label: string; shortcut: string; icon: React.ComponentType<{ size: number; className?: string }> }[] = [
     { id: 'DASHBOARD', label: 'Homepage', shortcut: 'H', icon: LayoutDashboard },
     { id: 'BUDGET', label: 'Budget', shortcut: 'B', icon: PieChart },
     { id: 'TRANSAZIONI', label: 'Movimenti', shortcut: 'M', icon: ListFilter },
-    { id: 'CALENDARIO', label: 'Calendario', shortcut: 'C', icon: Calendar },
-    { id: 'REPORT_AI', label: 'Report AI', shortcut: 'A', icon: Sparkles },
+    { id: 'CONTI', label: 'Patrimonio & Conti', shortcut: 'C', icon: Landmark },
+    { id: 'CALENDARIO', label: 'Calendario', shortcut: 'L', icon: Calendar },
   ];
 
   return (
-    <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-30 shadow-xs">
-      {/* 2. HEADER GLOBALE (TOP BAR) - Struttura ultra-compatta h-10 md:h-12 */}
-      <div className="w-full max-w-7xl mx-auto h-10 md:h-12 px-2.5 sm:px-6 flex items-center justify-between gap-2 sm:gap-4">
+    <header className="bg-white dark:bg-[#121212] border-b border-slate-200/80 dark:border-white/5 sticky top-0 z-30 shadow-xs backdrop-blur-md">
+      {/* 2. HEADER GLOBALE (TOP BAR) */}
+      <div className="w-full max-w-7xl mx-auto h-11 md:h-13 px-2.5 sm:px-6 flex items-center justify-between gap-2 sm:gap-4">
         {/* Sinistra: Nome App + Indicatore di stato discreto Firestore */}
         <div className="flex items-center gap-2 sm:gap-3">
-          <h1 className="text-sm sm:text-base md:text-lg font-bold text-slate-900 dark:text-white tracking-tight whitespace-nowrap">
+          <div className="w-8 h-8 rounded-[11px] bg-[#E31B23]/15 text-[#E31B23] border border-[#E31B23]/25 flex items-center justify-center font-bold text-sm">
+            FF
+          </div>
+          <h1 className="text-sm sm:text-base md:text-lg font-bold text-slate-900 dark:text-[#F5F5F7] tracking-tight whitespace-nowrap">
             Finanze Familiari
           </h1>
-          <div className="h-3.5 w-px bg-slate-200 dark:bg-slate-700 hidden md:block" />
+          <div className="h-3.5 w-px bg-slate-200 dark:bg-white/10 hidden md:block" />
           <div className="hidden md:flex items-center">
             {renderStatusIndicator()}
           </div>
         </div>
 
-        {/* Destra: Toolbar azioni (Dropdown Gestione, Notifiche, Toggle Tema, + Nuova Transazione) */}
+        {/* Destra: Toolbar azioni (+ Nuova Transazione, Dropdown Gestione, Notifiche, Toggle Tema) */}
         <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Spotlight Search Global Button (Ctrl+K) */}
+          {onOpenSpotlight && (
+            <button
+              id="header-spotlight-btn"
+              onClick={onOpenSpotlight}
+              className="h-8 sm:h-9 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-[#1C1C1E] text-slate-700 dark:text-[#8E8E93] hover:text-slate-900 dark:hover:text-[#F5F5F7] transition active:scale-95 shadow-xs cursor-pointer"
+              title="Cerca ovunque (Scorciatoia: Ctrl+K)"
+            >
+              <Search size={14} strokeWidth={2.2} />
+              <span className="hidden lg:inline text-xs font-medium">Cerca</span>
+              <kbd className="hidden sm:inline-block px-1.5 py-0.2 text-[9.5px] font-mono font-bold text-slate-400 dark:text-[#8E8E93] bg-white dark:bg-[#242426] rounded border border-slate-200/80 dark:border-white/10">
+                ⌘K
+              </kbd>
+            </button>
+          )}
+
+          {/* Pulsante Nuova Transazione Primario */}
+          <button
+            id="btn-header-new-transaction"
+            onClick={onOpenNewTransaction}
+            className="h-8 sm:h-9 px-3 sm:px-4 flex items-center gap-1.5 rounded-full bg-[#E31B23] hover:bg-[#c9171e] text-white font-bold text-xs sm:text-sm shadow-md shadow-red-600/20 transition active:scale-95 cursor-pointer shrink-0"
+            title="Nuova Transazione (Scorciatoia: N)"
+          >
+            <Plus size={16} strokeWidth={2.5} />
+            <span className="font-bold whitespace-nowrap">Nuova Operazione</span>
+          </button>
+
           {/* Menu Dropdown Gestione & Strumenti Rapidi */}
           <div className="relative" ref={toolsMenuRef}>
             <button
               id="header-tools-dropdown-btn"
               onClick={() => setIsToolsOpen(!isToolsOpen)}
-              className={`h-7.5 sm:h-8 px-2 sm:px-2.5 flex items-center gap-1 rounded-lg sm:rounded-xl border text-xs font-medium transition active:scale-95 shadow-xs cursor-pointer ${
-                isManagementActive
-                  ? 'border-indigo-400 dark:border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-semibold'
-                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750'
+              className={`h-8 sm:h-9 px-2.5 sm:px-3 flex items-center gap-1.5 rounded-full border text-xs font-semibold transition active:scale-95 shadow-xs cursor-pointer ${
+                isToolsActive
+                  ? 'border-[#E31B23] bg-[#E31B23]/10 text-[#E31B23]'
+                  : 'border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-[#1C1C1E] text-slate-700 dark:text-[#8E8E93] hover:text-slate-900 dark:hover:text-[#F5F5F7]'
               }`}
-              title="Strumenti e Gestione"
+              title="Strumenti, Analisi e Impostazioni"
               aria-expanded={isToolsOpen}
             >
               <SlidersHorizontal size={14} />
-              <span className="hidden md:inline">Gestione</span>
-              {isManagementActive && (
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 -ml-0.5" />
+              <span className="hidden md:inline">Strumenti</span>
+              {isToolsActive && (
+                <span className="w-1.5 h-1.5 rounded-full bg-[#E31B23] -ml-0.5" />
               )}
-              <ChevronDown size={12} className={`transition-transform duration-200 text-slate-400 ${isToolsOpen ? 'rotate-180' : ''}`} />
+              <ChevronDown size={12} className={`transition-transform duration-200 ${isToolsOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {isToolsOpen && (
-              <div className="absolute right-0 mt-2 w-64 rounded-[20px] bg-white dark:bg-[#1C1C1E] border border-slate-200/80 dark:border-white/5 shadow-xl py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
-                <div className="px-3 py-1.5 border-b border-slate-100 dark:border-white/5 mb-1 flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                    Sezioni & Azioni
-                  </span>
-                </div>
-
-                {/* Nuova Transazione (Azione Rapida) */}
-                {onOpenNewTransaction && (
-                  <button
-                    id="tool-menu-new-transaction"
-                    onClick={() => {
-                      setIsToolsOpen(false);
-                      onOpenNewTransaction();
-                    }}
-                    className="w-full px-3 py-2 text-left flex items-center gap-2.5 text-xs transition-colors font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-[#242426]"
-                  >
-                    <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-                      <Plus size={15} strokeWidth={2.5} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <span className="block text-slate-900 dark:text-slate-100 font-semibold">Nuova Transazione</span>
-                        <span className="hidden md:inline text-[11px] font-mono font-normal text-slate-400 dark:text-slate-500 ml-1.5">(N)</span>
+              <div className="absolute right-0 mt-2 w-76 rounded-[24px] bg-white dark:bg-[#1C1C1E] border border-slate-200/90 dark:border-white/10 shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-150 space-y-2">
+                {/* Gruppo 1: Pianificazione & AI */}
+                <div>
+                  <div className="px-3 py-1 text-[10px] font-bold text-slate-400 dark:text-[#8E8E93] uppercase tracking-wider">
+                    Pianificazione & AI
+                  </div>
+                  <div className="space-y-0.5 mt-1">
+                    <button
+                      onClick={() => {
+                        setIsToolsOpen(false);
+                        setActiveTab('REPORT_AI');
+                      }}
+                      className={`w-full px-3 py-2 rounded-[14px] text-left flex items-center gap-2.5 text-xs transition-colors ${
+                        activeTab === 'REPORT_AI'
+                          ? 'bg-[#E31B23]/15 text-[#E31B23] font-bold'
+                          : 'text-slate-700 dark:text-[#F5F5F7] hover:bg-slate-100 dark:hover:bg-[#242426]'
+                      }`}
+                    >
+                      <div className="w-7 h-7 rounded-[10px] bg-purple-500/15 text-purple-500 dark:text-purple-400 flex items-center justify-center shrink-0">
+                        <Sparkles size={14} />
                       </div>
-                      <span className="text-[10px] text-slate-400 block -mt-0.5">Registra spesa o entrata</span>
-                    </div>
-                  </button>
-                )}
+                      <div className="flex-1 min-w-0">
+                        <span className="block font-semibold truncate">Report AI Gemini</span>
+                        <span className="text-[10px] text-slate-400 dark:text-[#8E8E93] block truncate">Analisi settimanale e consigli</span>
+                      </div>
+                    </button>
 
-                {/* Conti & Fondi */}
-                <button
-                  id="tool-menu-accounts"
-                  onClick={() => {
-                    setIsToolsOpen(false);
-                    setActiveTab('CONTI');
-                  }}
-                  className={`w-full px-3 py-2 text-left flex items-center gap-2.5 text-xs transition-colors font-medium ${
-                    activeTab === 'CONTI'
-                      ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 font-semibold'
-                      : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-[#242426]'
-                  }`}
-                >
-                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                    activeTab === 'CONTI'
-                      ? 'bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-300'
-                      : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400'
-                  }`}>
-                    <Landmark size={15} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="block text-slate-900 dark:text-slate-100 font-semibold">Conti & Fondi</span>
-                      <span className="hidden md:inline text-[11px] font-mono font-normal text-slate-400 dark:text-slate-500 ml-1.5">(C)</span>
-                    </div>
-                    <span className="text-[10px] text-slate-400 block -mt-0.5">Gestisci saldi e disponibilità</span>
-                  </div>
-                </button>
+                    {onOpenReceiptScanner && (
+                      <button
+                        onClick={() => {
+                          setIsToolsOpen(false);
+                          onOpenReceiptScanner();
+                        }}
+                        className="w-full px-3 py-2 rounded-[14px] text-left flex items-center gap-2.5 text-xs text-slate-700 dark:text-[#F5F5F7] hover:bg-slate-100 dark:hover:bg-[#242426] transition-colors"
+                      >
+                        <div className="w-7 h-7 rounded-[10px] bg-rose-500/15 text-rose-500 dark:text-rose-400 flex items-center justify-center shrink-0">
+                          <Camera size={14} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="block font-semibold truncate">Scanner Scontrini AI</span>
+                          <span className="text-[10px] text-slate-400 dark:text-[#8E8E93] block truncate">OCR Gemini Vision istantaneo</span>
+                        </div>
+                      </button>
+                    )}
 
-                {/* Progetti & Finanziamenti */}
-                <button
-                  id="tool-menu-projects"
-                  onClick={() => {
-                    setIsToolsOpen(false);
-                    setActiveTab('PROGETTI');
-                  }}
-                  className={`w-full px-3 py-2 text-left flex items-center gap-2.5 text-xs transition-colors font-medium ${
-                    activeTab === 'PROGETTI'
-                      ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 font-semibold'
-                      : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-[#242426]'
-                  }`}
-                >
-                  <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-                    <FolderKanban size={15} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="block text-slate-900 dark:text-slate-100 font-semibold">Progetti & Prestiti</span>
-                      <span className="hidden md:inline text-[11px] font-mono font-normal text-slate-400 dark:text-slate-500 ml-1.5">(P)</span>
-                    </div>
-                    <span className="text-[10px] text-slate-400 block -mt-0.5">Finanziamenti ed impegni di spesa</span>
-                  </div>
-                </button>
+                    {onOpenPurchaseImpact && (
+                      <button
+                        onClick={() => {
+                          setIsToolsOpen(false);
+                          onOpenPurchaseImpact();
+                        }}
+                        className="w-full px-3 py-2 rounded-[14px] text-left flex items-center gap-2.5 text-xs text-slate-700 dark:text-[#F5F5F7] hover:bg-slate-100 dark:hover:bg-[#242426] transition-colors"
+                      >
+                        <div className="w-7 h-7 rounded-[10px] bg-indigo-500/15 text-indigo-500 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                          <Calculator size={14} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="block font-semibold truncate">Simulatore "What-If" Acquisti</span>
+                          <span className="text-[10px] text-slate-400 dark:text-[#8E8E93] block truncate">Impatto su liquidità e riserve</span>
+                        </div>
+                      </button>
+                    )}
 
-                {/* Idee & Note */}
-                <button
-                  id="tool-menu-notes"
-                  onClick={() => {
-                    setIsToolsOpen(false);
-                    setActiveTab('NOTE');
-                  }}
-                  className={`w-full px-3 py-2 text-left flex items-center gap-2.5 text-xs transition-colors font-medium ${
-                    activeTab === 'NOTE'
-                      ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 font-semibold'
-                      : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-[#242426]'
-                  }`}
-                >
-                  <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                    <StickyNote size={15} />
+                    <button
+                      onClick={() => {
+                        setIsToolsOpen(false);
+                        setActiveTab('PROGETTI');
+                      }}
+                      className={`w-full px-3 py-2 rounded-[14px] text-left flex items-center gap-2.5 text-xs transition-colors ${
+                        activeTab === 'PROGETTI'
+                          ? 'bg-[#E31B23]/15 text-[#E31B23] font-bold'
+                          : 'text-slate-700 dark:text-[#F5F5F7] hover:bg-slate-100 dark:hover:bg-[#242426]'
+                      }`}
+                    >
+                      <div className="w-7 h-7 rounded-[10px] bg-blue-500/15 text-blue-500 dark:text-blue-400 flex items-center justify-center shrink-0">
+                        <FolderKanban size={14} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="block font-semibold truncate">Progetti & Prestiti</span>
+                        <span className="text-[10px] text-slate-400 dark:text-[#8E8E93] block truncate">Finanziamenti e impegni pluriennali</span>
+                      </div>
+                    </button>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="block text-slate-900 dark:text-slate-100 font-semibold">Idee & Note</span>
-                      <span className="hidden md:inline text-[11px] font-mono font-normal text-slate-400 dark:text-slate-500 ml-1.5">(I)</span>
-                    </div>
-                    <span className="text-[10px] text-slate-400 block -mt-0.5">Appunti e promemoria finanziari</span>
-                  </div>
-                </button>
-
-                {/* Impostazioni */}
-                <button
-                  id="tool-menu-settings"
-                  onClick={() => {
-                    setIsToolsOpen(false);
-                    setActiveTab('IMPOSTAZIONI');
-                  }}
-                  className={`w-full px-3 py-2 text-left flex items-center gap-2.5 text-xs transition-colors font-medium ${
-                    activeTab === 'IMPOSTAZIONI'
-                      ? 'bg-slate-100 dark:bg-[#242426] text-slate-900 dark:text-white font-semibold'
-                      : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-[#242426]'
-                  }`}
-                >
-                  <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-[#2A2A2E] text-slate-600 dark:text-slate-300 flex items-center justify-center shrink-0">
-                    <Settings size={15} />
-                  </div>
-                  <div>
-                    <span className="block text-slate-900 dark:text-slate-100 font-semibold">Impostazioni</span>
-                    <span className="text-[10px] text-slate-400 block -mt-0.5">Configurazione generale app</span>
-                  </div>
-                </button>
-
-                <div className="my-1 border-t border-slate-100 dark:border-white/5" />
-                <div className="px-3 py-1">
-                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                    Strumenti Finanziari
-                  </span>
                 </div>
 
-                {onOpenReconciliation && (
-                  <button
-                    id="tool-menu-reconciliation"
-                    onClick={() => {
-                      setIsToolsOpen(false);
-                      onOpenReconciliation();
-                    }}
-                    className="w-full px-3 py-2 text-left flex items-center gap-2.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-medium"
-                  >
-                    <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                      <FileSpreadsheet size={15} />
-                    </div>
-                    <div>
-                      <span className="block text-slate-900 dark:text-slate-100 font-semibold">Estratto Conto</span>
-                      <span className="text-[10px] text-slate-400 block -mt-0.5">Riconciliazione bancaria</span>
-                    </div>
-                  </button>
-                )}
-
-                {onOpenCategories && (
-                  <button
-                    id="tool-menu-categories"
-                    onClick={() => {
-                      setIsToolsOpen(false);
-                      onOpenCategories();
-                    }}
-                    className="w-full px-3 py-2 text-left flex items-center gap-2.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-medium"
-                  >
-                    <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
-                      <Tag size={15} />
-                    </div>
-                    <div>
-                      <span className="block text-slate-900 dark:text-slate-100 font-semibold">Categorie & Icone</span>
-                      <span className="text-[10px] text-slate-400 block -mt-0.5">Personalizza voci di spesa</span>
-                    </div>
-                  </button>
-                )}
-
-                <button
-                  id="tool-menu-backup"
-                  onClick={() => {
-                    setIsToolsOpen(false);
-                    onOpenBackup();
-                  }}
-                  className="w-full px-3 py-2 text-left flex items-center gap-2.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-medium"
-                >
-                  <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                    <Database size={15} />
+                {/* Gruppo 2: Gestione & Utilità */}
+                <div className="pt-1.5 border-t border-slate-100 dark:border-white/5">
+                  <div className="px-3 py-1 text-[10px] font-bold text-slate-400 dark:text-[#8E8E93] uppercase tracking-wider">
+                    Gestione & Utilità
                   </div>
-                  <div>
-                    <span className="block text-slate-900 dark:text-slate-100 font-semibold">Backup & Cloud</span>
-                    <span className="text-[10px] text-slate-400 block -mt-0.5">Salva o ripristina dati JSON</span>
+                  <div className="space-y-0.5 mt-1">
+                    {onOpenExportSummary && (
+                      <button
+                        onClick={() => {
+                          setIsToolsOpen(false);
+                          onOpenExportSummary();
+                        }}
+                        className="w-full px-3 py-2 rounded-[14px] text-left flex items-center gap-2.5 text-xs text-slate-700 dark:text-[#F5F5F7] hover:bg-slate-100 dark:hover:bg-[#242426] transition-colors"
+                      >
+                        <div className="w-7 h-7 rounded-[10px] bg-emerald-500/15 text-emerald-500 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                          <Printer size={14} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="block font-semibold truncate">Esporta Report Mensile</span>
+                          <span className="text-[10px] text-slate-400 dark:text-[#8E8E93] block truncate">Prospetto PDF e riassunto stampabile</span>
+                        </div>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => {
+                        setIsToolsOpen(false);
+                        setActiveTab('NOTE');
+                      }}
+                      className={`w-full px-3 py-2 rounded-[14px] text-left flex items-center gap-2.5 text-xs transition-colors ${
+                        activeTab === 'NOTE'
+                          ? 'bg-[#E31B23]/15 text-[#E31B23] font-bold'
+                          : 'text-slate-700 dark:text-[#F5F5F7] hover:bg-slate-100 dark:hover:bg-[#242426]'
+                      }`}
+                    >
+                      <div className="w-7 h-7 rounded-[10px] bg-amber-500/15 text-amber-500 dark:text-amber-400 flex items-center justify-center shrink-0">
+                        <StickyNote size={14} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="block font-semibold truncate">Idee & Note Spesa</span>
+                        <span className="text-[10px] text-slate-400 dark:text-[#8E8E93] block truncate">Promemoria e appunti</span>
+                      </div>
+                    </button>
+
+                    {onOpenReconciliation && (
+                      <button
+                        onClick={() => {
+                          setIsToolsOpen(false);
+                          onOpenReconciliation();
+                        }}
+                        className="w-full px-3 py-2 rounded-[14px] text-left flex items-center gap-2.5 text-xs text-slate-700 dark:text-[#F5F5F7] hover:bg-slate-100 dark:hover:bg-[#242426] transition-colors"
+                      >
+                        <div className="w-7 h-7 rounded-[10px] bg-teal-500/15 text-teal-500 dark:text-teal-400 flex items-center justify-center shrink-0">
+                          <FileSpreadsheet size={14} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="block font-semibold truncate">Riconciliazione Estratto Conto</span>
+                          <span className="text-[10px] text-slate-400 dark:text-[#8E8E93] block truncate">Verifica saldi bancari</span>
+                        </div>
+                      </button>
+                    )}
+
+                    {onOpenCategories && (
+                      <button
+                        onClick={() => {
+                          setIsToolsOpen(false);
+                          onOpenCategories();
+                        }}
+                        className="w-full px-3 py-2 rounded-[14px] text-left flex items-center gap-2.5 text-xs text-slate-700 dark:text-[#F5F5F7] hover:bg-slate-100 dark:hover:bg-[#242426] transition-colors"
+                      >
+                        <div className="w-7 h-7 rounded-[10px] bg-indigo-500/15 text-indigo-500 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                          <Tag size={14} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="block font-semibold truncate">Categorie & Classificazioni</span>
+                          <span className="text-[10px] text-slate-400 dark:text-[#8E8E93] block truncate">Voci di spesa e regole 50/30/20</span>
+                        </div>
+                      </button>
+                    )}
                   </div>
-                </button>
+                </div>
+
+                {/* Gruppo 3: Sistema */}
+                <div className="pt-1.5 border-t border-slate-100 dark:border-white/5">
+                  <div className="px-3 py-1 text-[10px] font-bold text-slate-400 dark:text-[#8E8E93] uppercase tracking-wider">
+                    Sistema
+                  </div>
+                  <div className="space-y-0.5 mt-1">
+                    <button
+                      onClick={() => {
+                        setIsToolsOpen(false);
+                        setActiveTab('IMPOSTAZIONI');
+                      }}
+                      className={`w-full px-3 py-2 rounded-[14px] text-left flex items-center gap-2.5 text-xs transition-colors ${
+                        activeTab === 'IMPOSTAZIONI'
+                          ? 'bg-[#E31B23]/15 text-[#E31B23] font-bold'
+                          : 'text-slate-700 dark:text-[#F5F5F7] hover:bg-slate-100 dark:hover:bg-[#242426]'
+                      }`}
+                    >
+                      <div className="w-7 h-7 rounded-[10px] bg-slate-200 dark:bg-[#2A2A2E] text-slate-700 dark:text-slate-300 flex items-center justify-center shrink-0">
+                        <Settings size={14} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="block font-semibold truncate">Impostazioni & Mese Finanziario</span>
+                        <span className="text-[10px] text-slate-400 dark:text-[#8E8E93] block truncate">Preferenze e giorno stipendio</span>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setIsToolsOpen(false);
+                        onOpenBackup();
+                      }}
+                      className="w-full px-3 py-2 rounded-[14px] text-left flex items-center gap-2.5 text-xs text-slate-700 dark:text-[#F5F5F7] hover:bg-slate-100 dark:hover:bg-[#242426] transition-colors"
+                    >
+                      <div className="w-7 h-7 rounded-[10px] bg-slate-200 dark:bg-[#2A2A2E] text-slate-700 dark:text-slate-300 flex items-center justify-center shrink-0">
+                        <Database size={14} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="block font-semibold truncate">Backup & Cloud</span>
+                        <span className="text-[10px] text-slate-400 dark:text-[#8E8E93] block truncate">Esporta / Importa dati JSON</span>
+                      </div>
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -349,12 +409,12 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             id="header-control-center-btn"
             onClick={onOpenControlCenter}
-            className="w-7.5 h-7.5 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg sm:rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-750 relative transition active:scale-95 shadow-xs cursor-pointer"
+            className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-full border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-[#1C1C1E] text-slate-700 dark:text-[#8E8E93] hover:text-slate-900 dark:hover:text-[#F5F5F7] relative transition active:scale-95 shadow-xs cursor-pointer"
             title="Centro Controllo & Avvisi"
           >
             <Bell size={15} />
             {alertCount > 0 && (
-              <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-rose-500 text-white font-bold text-[9px] rounded-full flex items-center justify-center ring-2 ring-white dark:ring-slate-900 font-numeric">
+              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-[#E31B23] text-white font-bold text-[9.5px] rounded-full flex items-center justify-center ring-2 ring-white dark:ring-[#121212] font-numeric">
                 {alertCount}
               </span>
             )}
@@ -365,10 +425,10 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* 3. BARRA DI NAVIGAZIONE PRINCIPALE (Desktop: visibile solo da tablet/desktop md:flex, completamente nascosta su smartphone) */}
+      {/* 3. BARRA DI NAVIGAZIONE PRINCIPALE DESKTOP (One UI Pill Style) */}
       <nav 
         id="main-navigation-tabs"
-        className="hidden md:flex items-center gap-1 md:gap-1.5 px-4 md:px-6 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800/80 overflow-x-auto no-scrollbar max-w-7xl mx-auto h-10"
+        className="hidden md:flex items-center gap-1.5 px-4 md:px-6 bg-white dark:bg-[#121212] border-t border-slate-100 dark:border-white/5 overflow-x-auto no-scrollbar max-w-7xl mx-auto py-1.5"
       >
         {navTabs.map((tab) => {
           const isActive = activeTab === tab.id;
@@ -378,18 +438,16 @@ export const Header: React.FC<HeaderProps> = ({
               key={tab.id}
               id={`nav-tab-${tab.id.toLowerCase()}`}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium transition whitespace-nowrap relative cursor-pointer ${
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-medium transition whitespace-nowrap cursor-pointer active:scale-95 ${
                 isActive
-                  ? 'border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 font-semibold -mb-px'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/60 rounded-lg'
+                  ? 'bg-[#E31B23] text-white font-bold shadow-2xs'
+                  : 'text-slate-600 dark:text-[#8E8E93] hover:text-slate-900 dark:hover:text-[#F5F5F7] hover:bg-slate-100 dark:hover:bg-[#1C1C1E]'
               }`}
               title={`${tab.label} (Scorciatoia: ${tab.shortcut})`}
             >
-              <Icon size={15} className={isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'} />
+              <Icon size={15} className={isActive ? 'text-white' : 'text-slate-400 dark:text-[#8E8E93]'} />
               <span>{tab.label}</span>
-              <span className={`hidden md:inline text-xs font-mono font-normal ml-0.5 ${
-                isActive ? 'text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-400 dark:text-slate-500'
-              }`}>
+              <span className={`hidden lg:inline text-[11px] font-mono font-normal opacity-70`}>
                 ({tab.shortcut})
               </span>
             </button>

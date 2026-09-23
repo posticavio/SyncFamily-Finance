@@ -422,11 +422,11 @@ export const BudgetDetailedAnalysis: React.FC<BudgetDetailedAnalysisProps> = ({
         {timeProgress.isCurrentMonth && (
           <div className="space-y-1.5">
             <div className="flex justify-between text-[11px] font-medium text-slate-500 dark:text-[#8E8E93]">
-              <span>Inizio Mese (1 {getMonthName(selectedMonth).slice(0, 3)})</span>
+              <span>Inizio ({timeProgress.periodInfo.startObj.getDate()} {getMonthName(timeProgress.periodInfo.startDate.slice(0, 7)).slice(0, 3)})</span>
               <span className="font-bold text-indigo-600 dark:text-indigo-400">
-                Giorno {timeProgress.daysElapsed} (Oggi)
+                Giorno {timeProgress.daysElapsed} di {timeProgress.totalDaysInMonth} (Oggi)
               </span>
-              <span>Fine Mese ({timeProgress.totalDaysInMonth} {getMonthName(selectedMonth).slice(0, 3)})</span>
+              <span>Fine ({timeProgress.periodInfo.endObj.getDate()} {getMonthName(timeProgress.periodInfo.endDate.slice(0, 7)).slice(0, 3)})</span>
             </div>
             <div className="relative w-full h-2.5 bg-slate-100 dark:bg-white/5 rounded-full overflow-hidden">
               <div 

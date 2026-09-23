@@ -25,7 +25,8 @@ import {
   ArrowDownLeft,
   Filter,
   Zap,
-  Loader2
+  Loader2,
+  ArrowLeftRight
 } from 'lucide-react';
 import { Account, Fund, Subcategory, Movement, MovementType } from '../types';
 import {
@@ -71,7 +72,7 @@ export const StatementReconciliationModal: React.FC<StatementReconciliationModal
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Tolleranza data configurabile (es. la data potrebbe variare)
-  const [dateToleranceDays, setDateToleranceDays] = useState<number>(7);
+  const [dateToleranceDays, setDateToleranceDays] = useState<number>(30);
 
   // Risultato del parsing e report di analisi
   const [parseResult, setParseResult] = useState<StatementParseResult | null>(null);
@@ -81,7 +82,40 @@ export const StatementReconciliationModal: React.FC<StatementReconciliationModal
   const [itemsState, setItemsState] = useState<Record<string, {
     selectedSubcategoryId: string;
     selectedForImport: boolean;
+    selectedOriginAccountId?: string;
+    selectedDestinationAccountId?: string;
   }>>({});
+
+  const [activeDestPickerItemId, setActiveDestPickerItemId] = useState<string | null>(null);
+  const [activeTransferConfigItemId, setActiveTransferConfigItemId] = useState<string | null>(null);
+
+  const isTransferSub = (subId: string) => {
+    const sub = subcategories.find(s => s.id === subId);
+    if (!sub) return false;
+    return sub.tipo === 'GIROCONTO' || 
+           sub.categoria_padre?.toLowerCase().includes('trasferiment') || 
+           sub.nome?.toLowerCase().includes('giroconto') ||
+           sub.nome?.toLowerCase().includes('trasferimento');
+  };
+
+  const handleConvertToTransfer = (itemId: string) => {
+    const transferSub = subcategories.find(s => 
+      s.tipo === 'GIROCONTO' || 
+      s.categoria_padre?.toLowerCase().includes('trasferiment') || 
+      s.nome?.toLowerCase().includes('giroconto') ||
+      s.nome?.toLowerCase().includes('trasferimento')
+    ) || subcategories[0];
+
+    setItemsState(prev => ({
+      ...prev,
+      [itemId]: {
+        ...prev[itemId],
+        selectedSubcategoryId: transferSub?.id || prev[itemId].selectedSubcategoryId,
+        selectedOriginAccountId: prev[itemId].selectedOriginAccountId || selectedAccountId
+      }
+    }));
+    setActiveTransferConfigItemId(itemId);
+  };
 
   // Filtro schede report: 'MANCANTI' (default!), 'TUTTE', 'RICONCILIATE', 'SOLO_APP'
   const [activeTab, setActiveTab] = useState<'MANCANTI' | 'TUTTE' | 'RICONCILIATE' | 'SOLO_APP'>('MANCANTI');
@@ -129,11 +163,13 @@ export const StatementReconciliationModal: React.FC<StatementReconciliationModal
     });
 
     // Inizializza lo stato degli elementi (sottocategoria e checkbox)
-    const initialMap: Record<string, { selectedSubcategoryId: string; selectedForImport: boolean }> = {};
+    const initialMap: Record<string, { selectedSubcategoryId: string; selectedForImport: boolean; selectedDestinationAccountId?: string }> = {};
     for (const it of report.items) {
+      const defaultDest = allAccountsAndFunds.find(a => a.id !== accId)?.id || allAccountsAndFunds[0]?.id || '';
       initialMap[it.id] = {
         selectedSubcategoryId: it.suggestedSubcategoryId,
-        selectedForImport: it.matchStatus === 'MISSING_IN_APP' || it.matchStatus === 'MATCHED_PLANNED'
+        selectedForImport: it.matchStatus === 'MISSING_IN_APP' || it.matchStatus === 'MATCHED_PLANNED',
+        selectedDestinationAccountId: defaultDest
       };
     }
     setItemsState(initialMap);
@@ -158,14 +194,24 @@ export const StatementReconciliationModal: React.FC<StatementReconciliationModal
       if (isExcel) {
         setParsingStatus('Decodifica del foglio di calcolo Excel...');
         const buffer = await file.arrayBuffer();
-        const workbook = XLSX.read(buffer, { type: 'array' });
+        let workbook;
+        try {
+          workbook = XLSX.read(buffer, { type: 'array', cellDates: false, raw: true });
+        } catch (readErr: any) {
+          throw new Error(`Errore lettura file Excel (${readErr?.message || 'formato non supportato'}). Suggerimento: salva il file in formato CSV (.csv) ed effettua l'upload.`);
+        }
         const firstSheetName = workbook.SheetNames[0];
         if (!firstSheetName) {
           throw new Error('Il file Excel non contiene fogli di lavoro validi.');
         }
         const worksheet = workbook.Sheets[firstSheetName];
         setParsingStatus('Conversione dati movimenti da Excel...');
-        const csv = XLSX.utils.sheet_to_csv(worksheet, { FS: ';' });
+        let csv = '';
+        try {
+          csv = XLSX.utils.sheet_to_csv(worksheet, { FS: ';' });
+        } catch (csvErr: any) {
+          throw new Error(`Impossibile convertire il foglio Excel in CSV: ${csvErr?.message || 'dati non validi'}. Prova a salvare il file come CSV.`);
+        }
         setRawText(csv);
 
         setParsingStatus('Analisi e riconciliazione automatica con il conto...');
@@ -184,9 +230,12 @@ export const StatementReconciliationModal: React.FC<StatementReconciliationModal
       }
     } catch (err: any) {
       console.error('Errore durante elaborazione file estratto conto:', err);
+      const errMessage = err?.message?.includes('Invalid time value') 
+        ? 'Il file Excel contiene formati di data o celle non validi. Ti consigliamo di salvarlo come file CSV (.csv) e riprovare.' 
+        : (err?.message || 'Formato file o contenuto non valido.');
       setFeedbackMessage({
         type: 'error',
-        text: `Impossibile analizzare il file: ${err?.message || 'Formato file o contenuto non valido.'}`
+        text: `Impossibile analizzare il file: ${errMessage}`
       });
     } finally {
       setIsParsingFile(false);
@@ -305,6 +354,8 @@ export const StatementReconciliationModal: React.FC<StatementReconciliationModal
           amount: it.statementRow.amount,
           type: it.statementRow.type,
           subcategoryId: state?.selectedSubcategoryId || it.suggestedSubcategoryId,
+          originAccountId: state?.selectedOriginAccountId,
+          destinationAccountId: state?.selectedDestinationAccountId,
           matchedPlannedId: it.matchedPlanned?.id,
           isNonContabilizzato: it.statementRow.isNonContabilizzato,
           note: it.statementRow.isNonContabilizzato
@@ -1034,7 +1085,7 @@ export const StatementReconciliationModal: React.FC<StatementReconciliationModal
 
                               {/* Per i mancanti: selettore rapido categoria e tasto inserisci */}
                               {(isMissing || isPlanned) && (
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex flex-wrap items-center gap-1.5 justify-end">
                                   <select
                                     value={state.selectedSubcategoryId}
                                     onChange={e => {
@@ -1050,12 +1101,83 @@ export const StatementReconciliationModal: React.FC<StatementReconciliationModal
                                     className="text-[11px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 max-w-[140px] truncate"
                                     title="Scegli sottocategoria per registrare questo movimento"
                                   >
-                                    {subcategories.map(sub => (
-                                      <option key={sub.id} value={sub.id}>
-                                        {sub.nome} ({sub.categoria_padre})
-                                      </option>
-                                    ))}
+                                    {subcategories
+                                      .filter(sub => sub.attiva !== false && (sub.tipo === item.statementRow.type || isTransferSub(sub.id)))
+                                      .map(sub => (
+                                        <option key={sub.id} value={sub.id}>
+                                          {sub.nome} ({sub.categoria_padre})
+                                        </option>
+                                      ))}
                                   </select>
+
+                                  {/* Bottone Trasferisci Da/A sempre visibile accanto alla sottocategoria */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleConvertToTransfer(item.id)}
+                                    className={`text-[11px] px-2.5 py-1.5 rounded-xl font-semibold flex items-center gap-1.5 transition-all border shadow-xs ${
+                                      isTransferSub(state.selectedSubcategoryId)
+                                        ? 'bg-indigo-600 text-white border-indigo-700 hover:bg-indigo-700'
+                                        : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900'
+                                    }`}
+                                    title="Imposta come trasferimento e decidi da dove a dove"
+                                  >
+                                    <ArrowLeftRight size={13} className="flex-shrink-0" />
+                                    <span className="truncate max-w-[160px]">
+                                      {isTransferSub(state.selectedSubcategoryId) 
+                                        ? `Da: ${allAccountsAndFunds.find(a => a.id === (state.selectedOriginAccountId || selectedAccountId))?.nome || 'Conto'} → A: ${allAccountsAndFunds.find(a => a.id === state.selectedDestinationAccountId)?.nome || 'Destinazione'}` 
+                                        : 'Trasferisci (Da/A)'}
+                                    </span>
+                                  </button>
+                                  {false && (
+                                    <div className="relative">
+                                      <button
+                                        type="button"
+                                        onClick={() => setActiveDestPickerItemId(activeDestPickerItemId === item.id ? null : item.id)}
+                                        className="text-[11px] bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900 border border-indigo-200 dark:border-indigo-800 rounded-xl px-2.5 py-1 text-indigo-700 dark:text-indigo-300 font-semibold flex items-center gap-1 transition-all"
+                                        title="Premi per scegliere il conto di destinazione del trasferimento"
+                                      >
+                                        <Building2 size={12} className="text-indigo-500" />
+                                        <span className="truncate max-w-[100px]">
+                                          {state.selectedDestinationAccountId
+                                            ? allAccountsAndFunds.find(a => a.id === state.selectedDestinationAccountId)?.nome || 'Scegli conto'
+                                            : 'Destinazione'}
+                                        </span>
+                                        <ChevronDown size={10} />
+                                      </button>
+
+                                      {activeDestPickerItemId === item.id && (
+                                        <div className="absolute right-0 mt-1 w-52 bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 py-1.5 z-50">
+                                          <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                            Conto di Arrivo
+                                          </div>
+                                          {allAccountsAndFunds
+                                            .filter(acc => acc.id !== selectedAccountId)
+                                            .map(acc => (
+                                              <button
+                                                key={acc.id}
+                                                type="button"
+                                                onClick={() => {
+                                                  setItemsState(prev => ({
+                                                    ...prev,
+                                                    [item.id]: {
+                                                      ...prev[item.id],
+                                                      selectedDestinationAccountId: acc.id
+                                                    }
+                                                  }));
+                                                  setActiveDestPickerItemId(null);
+                                                }}
+                                                className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                                                  state.selectedDestinationAccountId === acc.id ? 'text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50/50 dark:bg-indigo-950/30' : 'text-slate-700 dark:text-slate-200'
+                                                }`}
+                                              >
+                                                <span className="truncate">{acc.nome}</span>
+                                                {state.selectedDestinationAccountId === acc.id && <Check size={12} />}
+                                              </button>
+                                            ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
 
                                   <button
                                     type="button"
@@ -1144,6 +1266,135 @@ export const StatementReconciliationModal: React.FC<StatementReconciliationModal
           </div>
         </div>
       )}
+
+      {/* Modal Configurazione Giroconto Da/A */}
+      {activeTransferConfigItemId && (() => {
+        const item = reconciliationReport?.items.find(i => i.id === activeTransferConfigItemId);
+        if (!item) return null;
+        const state = itemsState[item.id] || { selectedSubcategoryId: item.suggestedSubcategoryId };
+        return (
+          <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+            <div className="w-full max-w-md bg-white dark:bg-[#1C1C1E] rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-white/10 space-y-5">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                    <ArrowLeftRight size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">Configura Trasferimento (Da / A)</h3>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">Decidi il conto di partenza e il conto di arrivo</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTransferConfigItemId(null)}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Conto Origine (Da) */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
+                    Conto di Partenza (Da)
+                  </label>
+                  <select
+                    value={state.selectedOriginAccountId || selectedAccountId}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setItemsState(prev => ({
+                        ...prev,
+                        [item.id]: {
+                          ...prev[item.id],
+                          selectedOriginAccountId: val
+                        }
+                      }));
+                    }}
+                    className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-2.5 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {allAccountsAndFunds.map(acc => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.nome} ({acc.tipo === 'CONTO' ? 'Conto' : 'Fondo'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Conto Destinazione (A) */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
+                    Conto di Arrivo (A)
+                  </label>
+                  <select
+                    value={state.selectedDestinationAccountId || ''}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setItemsState(prev => ({
+                        ...prev,
+                        [item.id]: {
+                          ...prev[item.id],
+                          selectedDestinationAccountId: val
+                        }
+                      }));
+                    }}
+                    className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-2.5 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">Seleziona conto di arrivo...</option>
+                    {allAccountsAndFunds
+                      .filter(acc => acc.id !== (state.selectedOriginAccountId || selectedAccountId))
+                      .map(acc => (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.nome} ({acc.tipo === 'CONTO' ? 'Conto' : 'Fondo'})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                {/* Sottocategoria */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
+                    Sottocategoria Trasferimento
+                  </label>
+                  <select
+                    value={state.selectedSubcategoryId}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setItemsState(prev => ({
+                        ...prev,
+                        [item.id]: {
+                          ...prev[item.id],
+                          selectedSubcategoryId: val
+                        }
+                      }));
+                    }}
+                    className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-2.5 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {subcategories
+                      .filter(sub => sub.attiva !== false && (sub.tipo === item.statementRow.type || isTransferSub(sub.id)))
+                      .map(sub => (
+                        <option key={sub.id} value={sub.id}>
+                          {sub.nome} ({sub.categoria_padre})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setActiveTransferConfigItemId(null)}
+                  className="px-5 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md w-full"
+                >
+                  Salva Configurazione Trasferimento
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Overlay Modale Barra di Avanzamento Trasferimento Movimenti */}
       {transferProgress && transferProgress.isOpen && (

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { BudgetPerformanceItem, MovementType, Subcategory } from '../types';
+import { BudgetPerformanceItem, MovementType, Subcategory, getSubcategoryClassification, getSubcategoryNecessity } from '../types';
 import { BudgetService } from '../services/BudgetService';
 import { CategoryService } from '../services/CategoryService';
 import { formatCurrency, getMonthName } from '../utils/formatters';
@@ -7,6 +7,7 @@ import { CategoryIcon } from './CategoryIcon';
 import { TabHeaderInfo } from './TabHeaderInfo';
 import { BudgetProgressBar, getSpendStatus, getIncomeStatus } from './BudgetProgressBar';
 import { BudgetDetailedAnalysis } from './BudgetDetailedAnalysis';
+import { SavingsSimulatorModal } from './SavingsSimulatorModal';
 import { 
   getCurrentFinancialMonth, 
   getFinancialPeriodInfo, 
@@ -29,7 +30,11 @@ import {
   LayoutGrid,
   Activity,
   PieChart,
-  ListFilter
+  ListFilter,
+  PiggyBank,
+  Sparkles,
+  Calculator,
+  ArrowUpRight
 } from 'lucide-react';
 
 interface CategoryGroup {
@@ -93,6 +98,9 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ onNavigateToTransactions
 
   // Modalità Vista: Panoramica classica o Analisi Dettagliata & Proiezioni
   const [viewMode, setViewMode] = useState<'OVERVIEW' | 'DETAILED_ANALYSIS'>('OVERVIEW');
+
+  // Modale Simulatore di Risparmio 6 & 12 Mesi
+  const [isSimulatorOpen, setIsSimulatorOpen] = useState<boolean>(false);
 
   const alertCategoriesCount = useMemo(() => {
     const filtered = data.items.filter(item => item.tipo === activeTab);
@@ -263,6 +271,54 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ onNavigateToTransactions
     ? getSpendStatus(overallPercentage, currentTotalBudget > 0, isOverallOver)
     : getIncomeStatus(overallPercentage, currentTotalBudget > 0);
 
+  // Calcolo di simulazione rapida per Risparmio 6 e 12 mesi basato su entrate e spese essenziali
+  const savingsSimulationPreview = useMemo(() => {
+    const income = data.totalePrevisioneEntrate > 0 
+      ? data.totalePrevisioneEntrate 
+      : (data.totaleBudgetEntrate > 0 ? data.totaleBudgetEntrate : data.totaleRealeEntrate);
+
+    let essentialExpenses = 0;
+    let extraExpenses = 0;
+
+    const subMap = new Map<string, Subcategory>();
+    allSubcategories.forEach(s => subMap.set(s.id, s));
+
+    data.items.forEach(item => {
+      if (item.tipo === 'USCITA') {
+        const sub = subMap.get(item.sottocategoria_id);
+        const val = item.previsione > 0 ? item.previsione : (item.budget > 0 ? item.budget : item.reale);
+        const classification = sub?.classificazione || (sub ? getSubcategoryClassification(sub) : 'SPESE_ESSENZIALI');
+        const necessity = sub?.necessita || (sub ? getSubcategoryNecessity(sub) : 'DEVO');
+
+        if (classification === 'SPESE_ESSENZIALI' || necessity === 'DEVO' || necessity === 'HO_BISOGNO') {
+          essentialExpenses += val;
+        } else {
+          extraExpenses += val;
+        }
+      }
+    });
+
+    if (essentialExpenses === 0 && data.totalePrevisione > 0) {
+      essentialExpenses = data.totalePrevisione * 0.7;
+      extraExpenses = data.totalePrevisione * 0.3;
+    }
+
+    const monthlyPotential = Math.round((income - essentialExpenses) * 100) / 100;
+    const accumulated6M = Math.round(monthlyPotential * 6 * 100) / 100;
+    const accumulated12M = Math.round(monthlyPotential * 12 * 100) / 100;
+    const emergencyRunwayMonths = essentialExpenses > 0 ? Math.round((accumulated12M / essentialExpenses) * 10) / 10 : 0;
+
+    return {
+      income,
+      essentialExpenses,
+      extraExpenses,
+      monthlyPotential,
+      accumulated6M,
+      accumulated12M,
+      emergencyRunwayMonths
+    };
+  }, [data, allSubcategories]);
+
   return (
     <div id="budget-view-container" className="mt-0 space-y-2 sm:space-y-3.5 max-w-7xl mx-auto w-full overflow-x-hidden no-scrollbar">
       {/* 4. SEZIONE TITOLO PAGINA & AZIONI CONTESTUALI */}
@@ -279,14 +335,25 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ onNavigateToTransactions
           </div>
         </div>
 
-        {/* Pulsante Nuovo Budget (Nascosto su smartphone, visibile da tablet/desktop) */}
-        <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="hidden sm:flex bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 font-medium text-sm px-4 py-2 rounded-xl transition items-center gap-2 shadow-xs active:scale-95 self-start sm:self-auto shrink-0"
-        >
-          <Plus size={16} strokeWidth={2.5} />
-          <span>Nuovo Budget</span>
-        </button>
+        {/* Pulsanti Azione Header (Nuovo Budget & Simulatore) */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsSimulatorOpen(true)}
+            className="flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 font-semibold text-xs sm:text-sm px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl transition shadow-xs active:scale-95 shrink-0 cursor-pointer"
+            title="Simula quanto risparmio accumuleresti in 6 o 12 mesi"
+          >
+            <PiggyBank size={15} />
+            <span>Simulatore 6/12M</span>
+          </button>
+
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="hidden sm:flex bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 font-medium text-sm px-4 py-2 rounded-xl transition items-center gap-2 shadow-xs active:scale-95 self-start sm:self-auto shrink-0 cursor-pointer"
+          >
+            <Plus size={16} strokeWidth={2.5} />
+            <span>Nuovo Budget</span>
+          </button>
+        </div>
       </div>
 
       {/* Month Selector, Tab Switcher and Action Bar */}
@@ -423,6 +490,55 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ onNavigateToTransactions
         />
       ) : (
         <>
+          {/* One UI Squircle Card: Simulazione Risparmio 6 & 12 Mesi (Entrate vs Spese Essenziali) */}
+          <div className="bg-white dark:bg-[#1C1C1E] border border-slate-200/80 dark:border-white/5 hover:border-emerald-500/40 rounded-2xl p-3.5 sm:p-4 shadow-xs transition-all flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3.5 relative overflow-hidden">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 flex items-center justify-center shrink-0">
+                <PiggyBank size={20} strokeWidth={2} />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-[#F5F5F7] tracking-tight truncate">
+                    Simulatore di Risparmio & Accumulo
+                  </h3>
+                  <span className="text-[9.5px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+                    Entrate vs Spese Essenziali
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-[#8E8E93] truncate mt-0.5">
+                  Potenziale: <strong className="text-slate-800 dark:text-[#F5F5F7] font-numeric">{formatCurrency(savingsSimulationPreview.monthlyPotential)}</strong>/mese • Proiezione a 6 e 12 mesi
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between md:justify-end gap-3.5 shrink-0 pt-2.5 md:pt-0 border-t md:border-t-0 border-slate-100 dark:border-white/5">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="text-left md:text-right">
+                  <span className="text-[9.5px] text-slate-400 dark:text-[#8E8E93] block leading-none mb-1 font-medium">In 6 Mesi</span>
+                  <span className="font-numeric tabular-nums text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400 block leading-none">
+                    {formatCurrency(savingsSimulationPreview.accumulated6M, { showSign: true })}
+                  </span>
+                </div>
+                <div className="w-px h-6 bg-slate-200 dark:bg-white/10 hidden sm:block" />
+                <div className="text-left md:text-right">
+                  <span className="text-[9.5px] text-slate-400 dark:text-[#8E8E93] block leading-none mb-1 font-medium">In 12 Mesi</span>
+                  <span className="font-numeric tabular-nums text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400 block leading-none">
+                    {formatCurrency(savingsSimulationPreview.accumulated12M, { showSign: true })}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsSimulatorOpen(true)}
+                className="px-3.5 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer active:scale-95 shadow-2xs"
+              >
+                <Sparkles size={13} />
+                <span>Simula Scenari</span>
+              </button>
+            </div>
+          </div>
+
           {/* Overview KPI Cards - Griglia responsive 2x2 perfetta su smartphone e 5 colonne su desktop */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-2.5 lg:gap-3 w-full">
             {/* KPI 1: Budget Fissato */}
@@ -583,8 +699,12 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ onNavigateToTransactions
                 <span>85% - 99% In esaurimento</span>
               </div>
               <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span>100% Allineato</span>
+              </div>
+              <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-rose-500" />
-                <span>≥ 100% Sforamento</span>
+                <span>&gt; 100% Sforamento</span>
               </div>
               <div className="flex items-center gap-1.5 pl-1 border-l border-slate-200 dark:border-white/10">
                 <span
@@ -635,7 +755,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ onNavigateToTransactions
             const isExpanded = !!expandedCategories[category.categoryName];
             const hasCatBudget = category.budget > 0;
             const isOverCat = isExpense && hasCatBudget && category.differenza < 0;
-            const isNearCat = isExpense && hasCatBudget && category.differenza >= 0 && category.percentuale >= 85;
+            const isNearCat = isExpense && hasCatBudget && category.differenza >= 0 && category.percentuale >= 85 && category.percentuale < 100;
             const catStatus = isExpense 
               ? getSpendStatus(category.percentuale, hasCatBudget, category.differenza < 0)
               : getIncomeStatus(category.percentuale, hasCatBudget);
@@ -700,8 +820,8 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ onNavigateToTransactions
                   </div>
 
                   {/* Second Row: Badges & Target Summary */}
-                  <div className="flex items-center justify-between gap-1.5 text-xs pt-0.5">
-                    <div className="flex items-center gap-1 flex-nowrap shrink-0">
+                  <div className="flex items-center justify-between gap-x-2 gap-y-1 text-xs pt-0.5 flex-wrap">
+                    <div className="flex items-center gap-1 flex-wrap shrink-0">
                       <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold whitespace-nowrap border ${catStatus.badgeBg} ${catStatus.badgeText} ${catStatus.badgeBorder}`}>
                         {category.percentuale}%
                       </span>
@@ -714,6 +834,11 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ onNavigateToTransactions
                       {isNearCat && (
                         <span className="px-1 py-0.5 rounded text-[8.5px] font-bold whitespace-nowrap bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-400 border border-orange-300 dark:border-orange-800 flex items-center gap-0.5">
                           In esaurimento
+                        </span>
+                      )}
+                      {category.percentuale === 100 && !isOverCat && (
+                        <span className="px-1 py-0.5 rounded text-[8.5px] font-bold whitespace-nowrap bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800 flex items-center gap-0.5">
+                          Allineato
                         </span>
                       )}
                     </div>
@@ -770,59 +895,50 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ onNavigateToTransactions
                       return (
                         <div
                           key={item.sottocategoria_id}
-                          className="p-2.5 sm:px-3 flex items-center justify-between gap-2 hover:bg-slate-50/70 dark:hover:bg-white/[0.02] transition-colors"
+                          className="p-3 sm:px-4 sm:py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/70 dark:hover:bg-white/[0.02] transition-colors"
                         >
-                          {/* Subcategory Info (Left, flex-1) */}
-                          <div className="flex items-center gap-2 min-w-0 flex-1">
-                            <div className="relative w-7 h-7 rounded-lg flex items-center justify-center shrink-0 bg-slate-100 dark:bg-white/10">
-                              <CategoryIcon name={item.icon_name} color={item.colore} size={14} />
+                          {/* Subcategory Info (Left) */}
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <div className="relative w-8 h-8 rounded-xl flex items-center justify-center shrink-0 bg-slate-100 dark:bg-white/10">
+                              <CategoryIcon name={item.icon_name} color={item.colore} size={15} />
                               {isOverSub && (
-                                <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                                <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
                                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-80"></span>
-                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600 border border-white dark:border-[#1C1C1E]"></span>
+                                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-600 border border-white dark:border-[#1C1C1E]"></span>
                                 </span>
                               )}
                             </div>
                             <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1 flex-nowrap">
-                                <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <h4 className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 truncate">
                                   {item.sottocategoria_nome}
                                 </h4>
+                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border ${subStatus.badgeBg} ${subStatus.badgeText} ${subStatus.badgeBorder}`}>
+                                  {hasSubBudget ? `${item.percentuale}%` : 'Senza Budget'}
+                                </span>
                                 {isOverSub && (
-                                  <span className="px-1 py-0.2 rounded text-[8.5px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 border border-rose-300 dark:border-rose-800 flex items-center gap-0.5 animate-pulse shrink-0 whitespace-nowrap">
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 border border-rose-300 dark:border-rose-800 flex items-center gap-0.5 animate-pulse">
                                     +{formatCurrency(Math.abs(item.differenza))}
                                   </span>
                                 )}
                               </div>
-                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-numeric tabular-nums block truncate mt-0.5">
+                              <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 font-numeric tabular-nums mt-0.5">
                                 {isExpense ? (
                                   item.reale === 0 && item.pianificato > 0 ? (
-                                    <>
-                                      In programma: <strong className="text-amber-600 dark:text-amber-400 font-semibold">{formatCurrency(item.pianificato)}</strong>
-                                    </>
+                                    <span>In programma: <strong className="text-amber-600 dark:text-amber-400 font-semibold">{formatCurrency(item.pianificato)}</strong></span>
                                   ) : (
-                                    <>
-                                      Speso: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{formatCurrency(item.reale)}</strong>
-                                      {item.pianificato > 0 && (
-                                        <span className="text-amber-600 dark:text-amber-400 ml-0.5"> (+{formatCurrency(item.pianificato)} p.)</span>
-                                      )}
-                                    </>
+                                    <span>Speso: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{formatCurrency(item.reale)}</strong>{item.pianificato > 0 ? ` (+${formatCurrency(item.pianificato)} p.)` : ''}</span>
                                   )
                                 ) : (
-                                  <>
-                                    Incassato: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{formatCurrency(item.reale)}</strong>
-                                    {item.pianificato > 0 && (
-                                      <span className="text-slate-400 dark:text-slate-500 ml-0.5"> (+{formatCurrency(item.pianificato)})</span>
-                                    )}
-                                  </>
+                                  <span>Incassato: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{formatCurrency(item.reale)}</strong></span>
                                 )}
-                              </span>
+                              </div>
                             </div>
                           </div>
 
-                          {/* Subcategory Progress Bar & Percentage Pill (Center, compact) */}
-                          <div className="w-18 sm:w-22 shrink-0 flex items-center gap-1.5">
-                            <div className="flex-1 min-w-0">
+                          {/* Progress Bar & Actions (Right) */}
+                          <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-white/5">
+                            <div className="w-24 sm:w-28 hidden sm:block">
                               <BudgetProgressBar
                                 reale={item.reale}
                                 pianificato={item.pianificato}
@@ -832,87 +948,81 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ onNavigateToTransactions
                                 isIncome={!isExpense}
                               />
                             </div>
-                            <span className={`px-1 py-0.2 rounded text-[9px] font-mono font-bold whitespace-nowrap shrink-0 border ${subStatus.badgeBg} ${subStatus.badgeText} ${subStatus.badgeBorder}`}>
-                              {hasSubBudget ? `${item.percentuale}%` : '—'}
-                            </span>
-                          </div>
 
-                          {/* Edit / Set Budget (Right, compact width) */}
-                          <div className="w-22 sm:w-24 flex items-center justify-end gap-1 shrink-0">
-                            {isEditing ? (
-                              <div className="flex items-center gap-1">
-                                <div className="relative">
-                                  <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">€</span>
-                                  <input
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={editBudgetAmount}
-                                    onChange={e => setEditBudgetAmount(e.target.value)}
-                                    placeholder="0"
-                                    autoFocus
-                                    className="w-14 pl-4 pr-1 py-0.5 text-xs font-numeric tabular-nums font-semibold bg-white dark:bg-[#2A2A2E] text-slate-900 dark:text-white border border-indigo-400 rounded-lg outline-none"
-                                  />
+                            <div className="flex items-center gap-1.5">
+                              {isEditing ? (
+                                <div className="flex items-center gap-1">
+                                  <div className="relative">
+                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">€</span>
+                                    <input
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={editBudgetAmount}
+                                      onChange={e => setEditBudgetAmount(e.target.value)}
+                                      placeholder="0"
+                                      autoFocus
+                                      className="w-20 pl-5 pr-2 py-1 text-xs font-numeric tabular-nums font-semibold bg-white dark:bg-[#2A2A2E] text-slate-900 dark:text-white border border-indigo-400 rounded-lg outline-none"
+                                    />
+                                  </div>
+                                  <button
+                                    onClick={() => handleSaveBudget(item.sottocategoria_id)}
+                                    className="p-1.5 bg-[#E31B23] text-white rounded-lg hover:bg-[#c9171e] transition-colors"
+                                    title="Salva"
+                                  >
+                                    <Check size={12} />
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingSubId(null)}
+                                    className="p-1.5 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg hover:bg-slate-300 transition-colors"
+                                    title="Annulla"
+                                  >
+                                    <X size={12} />
+                                  </button>
                                 </div>
-                                <button
-                                  onClick={() => handleSaveBudget(item.sottocategoria_id)}
-                                  className="p-1 bg-[#E31B23] text-white rounded-lg hover:bg-[#c9171e] transition-colors"
-                                  title="Salva"
-                                >
-                                  <Check size={11} />
-                                </button>
-                                <button
-                                  onClick={() => setEditingSubId(null)}
-                                  className="p-1 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg hover:bg-slate-300 transition-colors"
-                                  title="Annulla"
-                                >
-                                  <X size={11} />
-                                </button>
-                              </div>
-                            ) : (
-                              <>
-                                <button
-                                  onClick={() => {
-                                    setEditingSubId(item.sottocategoria_id);
-                                    setEditBudgetAmount(hasSubBudget ? item.budget.toString() : '');
-                                  }}
-                                  className="w-[66px] sm:w-[70px] py-1 px-1 rounded-lg border border-slate-200 dark:border-white/10 hover:border-[#E31B23] hover:bg-red-50/50 dark:hover:bg-red-950/20 text-slate-700 dark:text-slate-300 hover:text-[#E31B23] text-[10px] font-medium flex items-center justify-center gap-0.5 transition-all"
-                                  title="Modifica importo budget"
-                                >
-                                  <Edit2 size={9} className="shrink-0 text-slate-400" />
-                                  <span className="font-numeric tabular-nums truncate">
-                                    {hasSubBudget ? formatCurrency(item.budget) : 'Imposta'}
-                                  </span>
-                                </button>
-                                {hasSubBudget ? (
+                              ) : (
+                                <>
                                   <button
-                                    onClick={() => handleDeleteBudget(item.sottocategoria_id)}
-                                    className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors shrink-0"
-                                    title="Rimuovi budget"
-                                  >
-                                    <Trash2 size={11} />
-                                  </button>
-                                ) : (
-                                  <div className="w-6 h-6 shrink-0" />
-                                )}
-
-                                {onNavigateToTransactions && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      onNavigateToTransactions({
-                                        subcategoryId: item.sottocategoria_id,
-                                        month: selectedMonth
-                                      });
+                                    onClick={() => {
+                                      setEditingSubId(item.sottocategoria_id);
+                                      setEditBudgetAmount(hasSubBudget ? item.budget.toString() : '');
                                     }}
-                                    className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors shrink-0"
-                                    title="Vedi e isola i movimenti di questa sottocategoria in questo mese (cerca duplicati)"
+                                    className="py-1.5 px-2.5 rounded-xl border border-slate-200 dark:border-white/10 hover:border-[#E31B23] hover:bg-red-50/50 dark:hover:bg-red-950/20 text-slate-700 dark:text-slate-300 hover:text-[#E31B23] text-xs font-semibold flex items-center justify-center gap-1.5 transition-all bg-white dark:bg-white/5 shadow-2xs"
+                                    title="Modifica importo budget"
                                   >
-                                    <ListFilter size={11} />
+                                    <Edit2 size={11} className="shrink-0 text-slate-400" />
+                                    <span className="font-numeric tabular-nums">
+                                      {hasSubBudget ? formatCurrency(item.budget) : 'Imposta'}
+                                    </span>
                                   </button>
-                                )}
-                              </>
-                            )}
+                                  {hasSubBudget && (
+                                    <button
+                                      onClick={() => handleDeleteBudget(item.sottocategoria_id)}
+                                      className="w-7 h-7 flex items-center justify-center rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors shrink-0"
+                                      title="Rimuovi budget"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  )}
+
+                                  {onNavigateToTransactions && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onNavigateToTransactions({
+                                          subcategoryId: item.sottocategoria_id,
+                                          month: selectedMonth
+                                        });
+                                      }}
+                                      className="w-7 h-7 flex items-center justify-center rounded-xl text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors shrink-0"
+                                      title="Vedi movimenti"
+                                    >
+                                      <ListFilter size={13} />
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
                           </div>
                         </div>
                       );
@@ -1006,6 +1116,16 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ onNavigateToTransactions
           </div>
         </div>
       )}
+      {/* Modal Simulatore Risparmio 6 & 12 Mesi */}
+      <SavingsSimulatorModal
+        isOpen={isSimulatorOpen}
+        onClose={() => setIsSimulatorOpen(false)}
+        selectedMonthName={getFinancialPeriodInfo(selectedMonth).monthName}
+        items={data.items}
+        allSubcategories={allSubcategories}
+        defaultTotalIncome={data.totalePrevisioneEntrate > 0 ? data.totalePrevisioneEntrate : (data.totaleBudgetEntrate > 0 ? data.totaleBudgetEntrate : data.totaleRealeEntrate)}
+        defaultTotalExpenses={data.totalePrevisione > 0 ? data.totalePrevisione : (data.totaleBudget > 0 ? data.totaleBudget : data.totaleReale)}
+      />
     </div>
   );
 };

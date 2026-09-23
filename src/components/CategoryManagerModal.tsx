@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Subcategory, MovementType, SubcategoryClassification, getSubcategoryClassification } from '../types';
+import { Subcategory, MovementType, MovementNecessity, SubcategoryClassification, getSubcategoryClassification, getSubcategoryNecessity } from '../types';
 import { CategoryService } from '../services/CategoryService';
 import { CategoryIcon, AVAILABLE_ICONS, AVAILABLE_EMOJIS } from './CategoryIcon';
-import { X, Tag, Plus, Check, Edit2, Sparkles, Palette, ShieldCheck, TrendingUp } from 'lucide-react';
+import { X, Tag, Plus, Check, Edit2, Sparkles, Palette, ShieldCheck, TrendingUp, AlertCircle, ShoppingBag } from 'lucide-react';
 
 interface CategoryManagerModalProps {
   isOpen: boolean;
@@ -23,6 +23,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
   const [parentCategory, setParentCategory] = useState('');
   const [tipo, setTipo] = useState<MovementType>('USCITA');
   const [classificazione, setClassificazione] = useState<SubcategoryClassification>('SPESE_ESSENZIALI');
+  const [necessita, setNecessita] = useState<MovementNecessity>('DEVO');
   const [iconName, setIconName] = useState('Tag');
   const [colore, setColore] = useState('#E31B23');
   const [iconMode, setIconMode] = useState<'EMOJI' | 'ICONS'>('EMOJI');
@@ -37,6 +38,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
     setParentCategory(sub.categoria_padre);
     setTipo(sub.tipo);
     setClassificazione(sub.classificazione || getSubcategoryClassification(sub));
+    setNecessita(getSubcategoryNecessity(sub));
     setIconName(sub.icon_name || 'Tag');
     setColore(sub.colore || (sub.tipo === 'ENTRATA' ? '#10B981' : '#E31B23'));
     setIsEditing(true);
@@ -49,6 +51,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
     setParentCategory('Varie');
     setTipo('USCITA');
     setClassificazione('SPESE_ESSENZIALI');
+    setNecessita('DEVO');
     setIconName('🛒');
     setColore('#E31B23');
     setIsEditing(true);
@@ -71,6 +74,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
           categoria_padre: parentCategory.trim() || 'Varie',
           tipo,
           classificazione: resolvedClassificazione,
+          necessita,
           icon_name: iconName,
           colore
         });
@@ -82,6 +86,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
           categoria_padre: parentCategory.trim() || 'Varie',
           tipo,
           classificazione: resolvedClassificazione,
+          necessita,
           icon_name: iconName,
           colore,
           preferita: true
@@ -232,59 +237,128 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
                 </div>
               </div>
 
-              {/* Classificazione Macro */}
-              <div>
-                <label className="text-xs font-medium text-slate-600 dark:text-slate-400 block mb-1.5">
-                  Classificazione Budget & Grafici
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (tipo !== 'ENTRATA') setTipo('ENTRATA');
-                      setClassificazione('GUADAGNI');
-                    }}
-                    className={`p-2 rounded-xl border flex flex-col items-center justify-center gap-1 text-center transition-all cursor-pointer ${
-                      classificazione === 'GUADAGNI' || tipo === 'ENTRATA'
-                        ? 'bg-emerald-500 text-white border-emerald-600 shadow-xs'
-                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-400'
-                    }`}
-                  >
-                    <TrendingUp size={15} />
-                    <span className="text-[11px] font-bold">Guadagni</span>
-                  </button>
+              {/* Classificazione Macro & Regola 50/30/20 */}
+              <div className="space-y-3">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Regola 50/30/20 (Assegnazione Automatica)
+                    </label>
+                    <span className="text-[10px] text-slate-400">
+                      Applicata automaticamente alle nuove transazioni
+                    </span>
+                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (tipo !== 'USCITA') setTipo('USCITA');
-                      setClassificazione('SPESE_ESSENZIALI');
-                    }}
-                    className={`p-2 rounded-xl border flex flex-col items-center justify-center gap-1 text-center transition-all cursor-pointer ${
-                      tipo === 'USCITA' && classificazione === 'SPESE_ESSENZIALI'
-                        ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
-                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-400'
-                    }`}
-                  >
-                    <ShieldCheck size={15} />
-                    <span className="text-[11px] font-bold">Spesa Essenziale</span>
-                  </button>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNecessita('DEVO');
+                        if (tipo === 'USCITA') setClassificazione('SPESE_ESSENZIALI');
+                      }}
+                      className={`p-2.5 rounded-2xl border flex flex-col items-center justify-center gap-1 text-center transition-all cursor-pointer ${
+                        necessita === 'DEVO'
+                          ? 'bg-[#E31B23] text-white border-[#E31B23] shadow-xs'
+                          : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-red-400'
+                      }`}
+                    >
+                      <span className="text-xs font-bold">Devo (50%)</span>
+                      <span className={`text-[10px] ${necessita === 'DEVO' ? 'text-red-100' : 'text-slate-400'}`}>
+                        Spese fisse & rate
+                      </span>
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (tipo !== 'USCITA') setTipo('USCITA');
-                      setClassificazione('SPESE_EXTRA');
-                    }}
-                    className={`p-2 rounded-xl border flex flex-col items-center justify-center gap-1 text-center transition-all cursor-pointer ${
-                      tipo === 'USCITA' && classificazione === 'SPESE_EXTRA'
-                        ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
-                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-amber-400'
-                    }`}
-                  >
-                    <Sparkles size={15} />
-                    <span className="text-[11px] font-bold">Spesa Extra</span>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNecessita('HO_BISOGNO');
+                        if (tipo === 'USCITA') setClassificazione('SPESE_ESSENZIALI');
+                      }}
+                      className={`p-2.5 rounded-2xl border flex flex-col items-center justify-center gap-1 text-center transition-all cursor-pointer ${
+                        necessita === 'HO_BISOGNO'
+                          ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                          : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-amber-400'
+                      }`}
+                    >
+                      <span className="text-xs font-bold">Ho bisogno (30%)</span>
+                      <span className={`text-[10px] ${necessita === 'HO_BISOGNO' ? 'text-amber-100' : 'text-slate-400'}`}>
+                        Spesa & necessità
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNecessita('VOGLIO');
+                        if (tipo === 'USCITA') setClassificazione('SPESE_EXTRA');
+                      }}
+                      className={`p-2.5 rounded-2xl border flex flex-col items-center justify-center gap-1 text-center transition-all cursor-pointer ${
+                        necessita === 'VOGLIO'
+                          ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
+                          : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-400'
+                      }`}
+                    >
+                      <span className="text-xs font-bold">Voglio (20%)</span>
+                      <span className={`text-[10px] ${necessita === 'VOGLIO' ? 'text-emerald-100' : 'text-slate-400'}`}>
+                        Svago & extra
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-slate-600 dark:text-slate-400 block mb-1.5">
+                    Classificazione Budget & Grafici
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (tipo !== 'ENTRATA') setTipo('ENTRATA');
+                        setClassificazione('GUADAGNI');
+                      }}
+                      className={`p-2 rounded-xl border flex flex-col items-center justify-center gap-1 text-center transition-all cursor-pointer ${
+                        classificazione === 'GUADAGNI' || tipo === 'ENTRATA'
+                          ? 'bg-emerald-500 text-white border-emerald-600 shadow-xs'
+                          : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-400'
+                      }`}
+                    >
+                      <TrendingUp size={15} />
+                      <span className="text-[11px] font-bold">Guadagni</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (tipo !== 'USCITA') setTipo('USCITA');
+                        setClassificazione('SPESE_ESSENZIALI');
+                      }}
+                      className={`p-2 rounded-xl border flex flex-col items-center justify-center gap-1 text-center transition-all cursor-pointer ${
+                        tipo === 'USCITA' && classificazione === 'SPESE_ESSENZIALI'
+                          ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
+                          : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+                      }`}
+                    >
+                      <ShieldCheck size={15} />
+                      <span className="text-[11px] font-bold">Spesa Essenziale</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (tipo !== 'USCITA') setTipo('USCITA');
+                        setClassificazione('SPESE_EXTRA');
+                      }}
+                      className={`p-2 rounded-xl border flex flex-col items-center justify-center gap-1 text-center transition-all cursor-pointer ${
+                        tipo === 'USCITA' && classificazione === 'SPESE_EXTRA'
+                          ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                          : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-amber-400'
+                      }`}
+                    >
+                      <Sparkles size={15} />
+                      <span className="text-[11px] font-bold">Spesa Extra</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -402,28 +476,44 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[50vh] overflow-y-auto no-scrollbar">
-                {filtered.map(sub => (
-                  <div
-                    key={sub.id}
-                    onClick={() => startEdit(sub)}
-                    className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-850 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-750 flex items-center justify-between gap-3 cursor-pointer transition-all group"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <CategoryIcon name={sub.icon_name} color={sub.colore} tipo={sub.tipo} size={18} />
-                      <div className="min-w-0">
-                        <span className="text-xs font-semibold text-slate-900 dark:text-slate-100 block truncate">
-                          {sub.nome}
-                        </span>
-                        <span className="text-[10px] text-slate-400 block truncate">
-                          {sub.categoria_padre}
-                        </span>
+                {filtered.map(sub => {
+                  const nec = getSubcategoryNecessity(sub);
+                  return (
+                    <div
+                      key={sub.id}
+                      onClick={() => startEdit(sub)}
+                      className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-850 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-750 flex items-center justify-between gap-2.5 cursor-pointer transition-all group"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <CategoryIcon name={sub.icon_name} color={sub.colore} tipo={sub.tipo} size={18} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-semibold text-slate-900 dark:text-slate-100 block truncate">
+                              {sub.nome}
+                            </span>
+                            {sub.tipo === 'USCITA' && (
+                              <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-md shrink-0 ${
+                                nec === 'DEVO' 
+                                  ? 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/20' 
+                                  : nec === 'HO_BISOGNO'
+                                  ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                                  : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                              }`}>
+                                {nec === 'DEVO' ? 'Devo 50%' : nec === 'HO_BISOGNO' ? 'Ho bisogno 30%' : 'Voglio 20%'}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-slate-400 block truncate">
+                            {sub.categoria_padre}
+                          </span>
+                        </div>
                       </div>
+                      <span className="p-1.5 rounded-lg text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:bg-indigo-50 dark:group-hover:bg-indigo-950/60 transition-all shrink-0">
+                        <Edit2 size={13} />
+                      </span>
                     </div>
-                    <span className="p-1.5 rounded-lg text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:bg-indigo-50 dark:group-hover:bg-indigo-950/60 transition-all">
-                      <Edit2 size={13} />
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

@@ -29,9 +29,13 @@ import { ProjectsView } from './components/ProjectsView';
 import { NotepadView } from './components/NotepadView';
 import { StatementReconciliationModal } from './components/StatementReconciliationModal';
 import { WeeklyReportView } from './components/WeeklyReportView';
+import { SpotlightSearchModal } from './components/SpotlightSearchModal';
+import { ReceiptScannerModal } from './components/ReceiptScannerModal';
+import { PurchaseImpactModal } from './components/PurchaseImpactModal';
+import { MonthlySummaryExportModal } from './components/MonthlySummaryExportModal';
 import { motion, AnimatePresence } from 'motion/react';
 
-import { Plus } from 'lucide-react';
+import { Plus, FolderKanban } from 'lucide-react';
 import { formatCurrency } from './utils/formatters';
 import { haptics } from './utils/haptics';
 import { 
@@ -103,6 +107,10 @@ export default function App() {
   const [isControlOpen, setIsControlOpen] = useState(false);
   const [isBackupOpen, setIsBackupOpen] = useState(false);
   const [isReconciliationOpen, setIsReconciliationOpen] = useState(false);
+  const [isSpotlightOpen, setIsSpotlightOpen] = useState(false);
+  const [isReceiptScannerOpen, setIsReceiptScannerOpen] = useState(false);
+  const [isPurchaseImpactOpen, setIsPurchaseImpactOpen] = useState(false);
+  const [isExportSummaryOpen, setIsExportSummaryOpen] = useState(false);
   const [reconciliationAccountId, setReconciliationAccountId] = useState<string | undefined>(undefined);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | undefined>(undefined);
   const [selectedTagFilter, setSelectedTagFilter] = useState<string | null>(null);
@@ -192,6 +200,67 @@ export default function App() {
     initFirestore();
     refreshAll();
 
+    // Riconoscimento robusto scorciatoie Home Screen Android / Deep Link (?action=quick-add, /nuova-spesa, #quick-add, etc.)
+    const checkDeepLinkAction = () => {
+      try {
+        const url = new URL(window.location.href);
+        const search = url.searchParams;
+        const rawAction = search.get('action') || (search.has('quick-add') ? 'quick-add' : '') || (search.has('nuova-spesa') ? 'quick-add' : '') || (search.has('scanner') ? 'scan-receipt' : '');
+        const hash = (window.location.hash || '').replace('#', '').toLowerCase();
+        const pathname = (window.location.pathname || '').toLowerCase();
+
+        const isQuickAdd = 
+          rawAction === 'quick-add' || 
+          rawAction === 'new' || 
+          rawAction === 'new-tx' || 
+          rawAction === 'spesa' ||
+          hash === 'quick-add' || 
+          hash === 'nuova-spesa' || 
+          hash === 'new' || 
+          pathname === '/nuova-spesa' || 
+          pathname === '/quick-add' ||
+          pathname === '/spesa';
+
+        const isScanner = 
+          rawAction === 'scan-receipt' || 
+          rawAction === 'scan' || 
+          rawAction === 'scanner' || 
+          hash === 'scan-receipt' || 
+          hash === 'scanner' || 
+          pathname === '/scanner' ||
+          pathname === '/scontrino';
+
+        const isWhatIf = 
+          rawAction === 'what-if' || 
+          rawAction === 'simulator' || 
+          hash === 'what-if' || 
+          pathname === '/what-if';
+
+        if (isQuickAdd) {
+          setEditingMovement(null);
+          setIsNewTxOpen(true);
+        } else if (isScanner) {
+          setIsReceiptScannerOpen(true);
+        } else if (isWhatIf) {
+          setIsPurchaseImpactOpen(true);
+        }
+      } catch (e) {
+        console.warn('Errore parsing deep link:', e);
+      }
+    };
+
+    // Esegui subito e registra listener per quando l'app torna in primo piano da Android Shortcut
+    checkDeepLinkAction();
+    window.addEventListener('popstate', checkDeepLinkAction);
+    window.addEventListener('hashchange', checkDeepLinkAction);
+    window.addEventListener('focus', checkDeepLinkAction);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkDeepLinkAction();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     // Inizializza o genera automaticamente il report con cadenza settimanale
     const currentList = WeeklyReportService.getAllReports();
     setAllWeeklyReports(currentList);
@@ -211,6 +280,10 @@ export default function App() {
       setSyncStatus(status);
     });
     return () => {
+      window.removeEventListener('popstate', checkDeepLinkAction);
+      window.removeEventListener('hashchange', checkDeepLinkAction);
+      window.removeEventListener('focus', checkDeepLinkAction);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       unsubDB();
       unsubStatus();
     };
@@ -219,6 +292,13 @@ export default function App() {
   // Scorciatoie da tastiera Desktop per navigazione rapida tra le sezioni e nuova transazione
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Spotlight Global Shortcut: Ctrl+K / Cmd+K (funziona da qualsiasi schermata/input)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsSpotlightOpen(prev => !prev);
+        return;
+      }
+
       // Non intercettare se l'utente sta digitando in un campo input, textarea, select o elemento editabile
       const target = e.target as HTMLElement | null;
       if (
@@ -234,7 +314,7 @@ export default function App() {
         return;
       }
 
-      // Non intercettare combinazioni con tasti modificatori (Cmd, Ctrl, Alt)
+      // Non intercettare altre combinazioni con tasti modificatori (Cmd, Ctrl, Alt)
       if (e.metaKey || e.ctrlKey || e.altKey) {
         return;
       }
@@ -248,6 +328,10 @@ export default function App() {
         isControlOpen || 
         isBackupOpen || 
         isReconciliationOpen || 
+        isSpotlightOpen ||
+        isReceiptScannerOpen ||
+        isPurchaseImpactOpen ||
+        isExportSummaryOpen ||
         selectedAccountForDetail !== null;
 
       if (isAnyModalActive) {
@@ -438,6 +522,10 @@ export default function App() {
         onOpenCategories={() => setActiveTab('IMPOSTAZIONI')}
         onOpenBackup={() => setIsBackupOpen(true)}
         onOpenReconciliation={() => handleOpenReconciliation()}
+        onOpenSpotlight={() => setIsSpotlightOpen(true)}
+        onOpenReceiptScanner={() => setIsReceiptScannerOpen(true)}
+        onOpenPurchaseImpact={() => setIsPurchaseImpactOpen(true)}
+        onOpenExportSummary={() => setIsExportSummaryOpen(true)}
       />
 
       {/* Container fluido principale per i contenuti - Perfettamente allineato all'Header (max-w-7xl px-4 sm:px-6) */}
@@ -602,14 +690,14 @@ export default function App() {
               />
             )}
 
-            {/* Tab 8: CONTI & FONDI (Accessibile da Gestione -> Conti & Fondi) */}
+            {/* Tab: PATRIMONIO & CONTI (Conti, Fondi e Progetti/Debiti) */}
             {activeTab === 'CONTI' && (
               <div className="space-y-4">
-                {/* Header Viewing Area (One UI) per la sezione Conti */}
+                {/* Header Viewing Area (One UI) per la sezione Patrimonio */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
                   <div>
                     <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-[#F5F5F7] tracking-tight">
-                      Conti & Fondi <span className="hidden md:inline text-base font-mono font-normal text-slate-400 dark:text-slate-500">(C)</span>
+                      Patrimonio & Conti <span className="hidden md:inline text-base font-mono font-normal text-slate-400 dark:text-slate-500">(C)</span>
                     </h2>
                     <p className="text-xs sm:text-sm text-slate-500 dark:text-[#8E8E93] mt-0.5">
                       Panoramica saldi, disponibilità liquide, carte di pagamento e riserve
@@ -617,12 +705,20 @@ export default function App() {
                   </div>
                   <div className="flex items-center gap-2">
                     <button
+                      onClick={() => setActiveTab('PROGETTI')}
+                      className="px-3.5 py-1.5 rounded-full text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800 transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer shadow-2xs"
+                      title="Visualizza Progetti, Finanziamenti e Mutui"
+                    >
+                      <FolderKanban size={13} />
+                      <span>Progetti & Mutui →</span>
+                    </button>
+                    <button
                       id="conti-back-to-dashboard-btn"
                       onClick={() => setActiveTab('DASHBOARD')}
                       className="px-3.5 py-1.5 rounded-full text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-[#242426] dark:hover:bg-[#2A2A2E] text-slate-700 dark:text-[#F5F5F7] transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer shadow-2xs"
                       title="Torna alla Homepage"
                     >
-                      <span>← Torna a Homepage</span>
+                      <span>← Dashboard</span>
                     </button>
                   </div>
                 </div>
@@ -742,6 +838,97 @@ export default function App() {
           onSuccess={refreshAll}
         />
       )}
+
+      {/* Spotlight Global Hub (Ctrl+K) */}
+      <SpotlightSearchModal
+        isOpen={isSpotlightOpen}
+        onClose={() => setIsSpotlightOpen(false)}
+        movements={movements}
+        subcategories={subcategories}
+        accounts={rawAccounts}
+        funds={rawFunds}
+        onSelectMovement={(mov) => {
+          handleOpenEdit(mov);
+        }}
+        onNavigate={(tab) => {
+          setActiveTab(tab as any);
+        }}
+        onOpenNewTransaction={() => {
+          setEditingMovement(null);
+          setIsNewTxOpen(true);
+        }}
+        onOpenScanner={() => {
+          setIsReceiptScannerOpen(true);
+        }}
+        onOpenWhatIf={() => {
+          setIsPurchaseImpactOpen(true);
+        }}
+        onOpenExport={() => {
+          setIsExportSummaryOpen(true);
+        }}
+      />
+
+      {/* Scanner Scontrini AI Vision */}
+      <ReceiptScannerModal
+        isOpen={isReceiptScannerOpen}
+        onClose={() => setIsReceiptScannerOpen(false)}
+        subcategories={subcategories}
+        accounts={rawAccounts}
+        onScanComplete={(parsed) => {
+          setEditingMovement({
+            id: '',
+            movimento_id: '',
+            data: parsed.data || new Date().toISOString().split('T')[0],
+            descrizione: parsed.descrizione || '',
+            importo: parsed.importo || 0,
+            tipologia: 'USCITA',
+            conto_origine: parsed.conto_origine || rawAccounts[0]?.id || '',
+            sottocategoria_id: parsed.sottocategoria_id || subcategories[0]?.id || '',
+            stato: 'CONFERMATO',
+            origine_dati: 'MANUALE',
+            note: parsed.note || '',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+          setIsNewTxOpen(true);
+        }}
+      />
+
+      {/* Simulatore di Impatto Acquisti "What-If" */}
+      <PurchaseImpactModal
+        isOpen={isPurchaseImpactOpen}
+        onClose={() => setIsPurchaseImpactOpen(false)}
+        accounts={rawAccounts}
+        funds={rawFunds}
+        subcategories={subcategories}
+        onSimulatedPurchaseConfirmed={(purchase) => {
+          setEditingMovement({
+            id: '',
+            movimento_id: '',
+            data: purchase.data,
+            descrizione: purchase.descrizione,
+            importo: purchase.importo,
+            tipologia: 'USCITA',
+            conto_origine: purchase.conto_origine,
+            sottocategoria_id: purchase.sottocategoria_id,
+            stato: 'CONFERMATO',
+            origine_dati: 'MANUALE',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+          setIsNewTxOpen(true);
+        }}
+      />
+
+      {/* Esportazione & Report Mensile Stampabile */}
+      <MonthlySummaryExportModal
+        isOpen={isExportSummaryOpen}
+        onClose={() => setIsExportSummaryOpen(false)}
+        movements={movements}
+        subcategories={subcategories}
+        accounts={rawAccounts}
+        funds={rawFunds}
+      />
 
       {/* Desktop Context Menu */}
       {contextMenu && (

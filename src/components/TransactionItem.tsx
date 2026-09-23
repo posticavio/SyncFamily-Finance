@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { Movement, Subcategory, Account, Fund } from '../types';
 import { CategoryIcon } from './CategoryIcon';
 import { formatDateIT, getAmountDisplay } from '../utils/formatters';
-import { Copy, Trash2, ArrowRight, Landmark, Shield, Hash, Check, Filter, Clock, CalendarClock } from 'lucide-react';
+import { Copy, Trash2, ArrowRight, Landmark, Shield, Hash, Check, Filter, Clock, CalendarClock, Paperclip } from 'lucide-react';
 
 interface TransactionItemProps {
   movement: Movement;
@@ -263,6 +263,24 @@ export const TransactionItem: React.FC<TransactionItemProps> = ({
                 <span className="hidden sm:inline-block px-1.5 py-0.2 rounded text-[9px] font-medium bg-slate-100 dark:bg-[#2A2A2E] text-slate-500 dark:text-[#8E8E93] shrink-0">
                   Fissa
                 </span>
+              )}
+              {movement.allegati && movement.allegati.length > 0 && (
+                <div className="flex items-center gap-1 shrink-0 ml-1">
+                  {movement.allegati.map((att, idx) => (
+                    <a
+                      key={att.id || idx}
+                      href={att.webViewLink}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 text-[9.5px] font-bold hover:underline"
+                      title={att.name}
+                    >
+                      <Paperclip size={10} />
+                      <span className="max-w-[70px] truncate">{att.name}</span>
+                    </a>
+                  ))}
+                </div>
               )}
               {isFutureExpense && (
                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9.5px] font-bold bg-amber-100 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 border border-dashed border-amber-400/90 dark:border-amber-600 shrink-0 shadow-2xs">
