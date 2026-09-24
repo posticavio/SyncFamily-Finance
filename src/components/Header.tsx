@@ -8,6 +8,7 @@ import {
   PieChart, 
   ListFilter, 
   LayoutDashboard, 
+  LineChart,
   Tag, 
   Settings, 
   FolderKanban, 
@@ -24,7 +25,7 @@ import {
 import { CloudSyncStatus } from '../services/store';
 import { ThemeToggle } from './ThemeToggle';
 
-export type AppTabType = 'DASHBOARD' | 'TRANSAZIONI' | 'REPORT_AI' | 'CALENDARIO' | 'BUDGET' | 'PROGETTI' | 'NOTE' | 'IMPOSTAZIONI' | 'CONTI';
+export type AppTabType = 'DASHBOARD' | 'ANALISI' | 'TRANSAZIONI' | 'REPORT_AI' | 'CALENDARIO' | 'BUDGET' | 'PROGETTI' | 'NOTE' | 'IMPOSTAZIONI' | 'CONTI';
 
 interface HeaderProps {
   activeTab: AppTabType;
@@ -116,6 +117,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   const navTabs: { id: AppTabType; label: string; shortcut: string; icon: React.ComponentType<{ size: number; className?: string }> }[] = [
     { id: 'DASHBOARD', label: 'Homepage', shortcut: 'H', icon: LayoutDashboard },
+    { id: 'ANALISI', label: 'Analisi', shortcut: 'A', icon: LineChart },
     { id: 'BUDGET', label: 'Budget', shortcut: 'B', icon: PieChart },
     { id: 'TRANSAZIONI', label: 'Movimenti', shortcut: 'M', icon: ListFilter },
     { id: 'CONTI', label: 'Patrimonio & Conti', shortcut: 'C', icon: Landmark },

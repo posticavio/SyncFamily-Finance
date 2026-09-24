@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="wBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818CF8"/>
+      <stop offset="100%" stop-color="#4F46E5"/>
+    </linearGradient>
+    <filter id="shadowW" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="128" fill="url(#wBg)"/>
+  <rect x="8" y="8" width="496" height="496" rx="120" fill="none" stroke="#FFFFFF" stroke-opacity="0.25" stroke-width="4"/>
+
+  <!-- Sparkles & Simulation Crystal -->
+  <circle cx="256" cy="256" r="110" fill="#FFFFFF" fill-opacity="0.15"/>
+  <path d="M256 120 L276 216 L372 236 L276 256 L256 352 L236 256 L140 236 L236 216 Z" fill="#FFFFFF" filter="url(#shadowW)"/>
+  <circle cx="360" cy="150" r="16" fill="#FDE047"/>
+  <circle cx="150" cy="340" r="12" fill="#FDE047"/>
+  <circle cx="370" cy="330" r="18" fill="#FFFFFF"/>
+</svg>

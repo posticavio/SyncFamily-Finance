@@ -13,11 +13,12 @@ import {
   StickyNote, 
   FileSpreadsheet, 
   Database, 
-  ArrowUpRight,
-  ArrowDownLeft,
-  Tag,
-  Calculator,
-  ShieldAlert
+  ArrowUpRight, 
+  ArrowDownLeft, 
+  Tag, 
+  Calculator, 
+  ShieldAlert,
+  LineChart
 } from 'lucide-react';
 import { Movement, Subcategory, Account, Fund, Project, NoteItem } from '../types';
 import { formatCurrency, formatDate } from '../utils/formatters';
@@ -77,6 +78,14 @@ export const SpotlightSearchModal: React.FC<SpotlightSearchModalProps> = ({
       icon: Plus,
       color: 'bg-[#E31B23] text-white',
       action: () => { onClose(); onOpenNewTransaction(); }
+    },
+    {
+      id: 'act-analisi',
+      title: 'Analisi & Grafici Finanziari',
+      subtitle: 'Flussi Sankey, entrate vs uscite 50/30/20 e proiezioni saldi',
+      icon: LineChart,
+      color: 'bg-[#E31B23]/15 text-[#E31B23]',
+      action: () => { onClose(); onNavigateTab('ANALISI'); }
     },
     {
       id: 'act-whatif',

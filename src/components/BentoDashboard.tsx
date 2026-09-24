@@ -15,18 +15,10 @@ import {
   Sparkles,
   LayoutGrid,
   GitFork,
-  ChevronDown,
-  ChevronUp,
   PieChart
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { haptics } from '../utils/haptics';
-import { AccountForecastChart } from './AccountForecastChart';
-import { AccountsBalanceTimelineChart } from './AccountsBalanceTimelineChart';
-import { DailySpendingIncomeChart } from './DailySpendingIncomeChart';
-import { MonthlySpendingTrendsChart } from './MonthlySpendingTrendsChart';
-import { MonthlyMacroBreakdownChart } from './MonthlyMacroBreakdownChart';
-import { CashflowSankeyChart } from './CashflowSankeyChart';
 import { DashboardSkeleton } from './DashboardSkeleton';
 import { TabHeaderInfo } from './TabHeaderInfo';
 import { Carousel } from './Carousel';
@@ -60,6 +52,7 @@ interface BentoDashboardProps {
   onNavigateToProjects?: () => void;
   onNavigateToNotes?: () => void;
   onNavigateToReports?: () => void;
+  onNavigateToAnalytics?: () => void;
   onRefresh?: () => void;
 }
 
@@ -91,6 +84,7 @@ export const BentoDashboard: React.FC<BentoDashboardProps> = ({
   onNavigateToProjects,
   onNavigateToNotes,
   onNavigateToReports,
+  onNavigateToAnalytics,
   onRefresh
 }) => {
   if (isLoading) {
@@ -98,9 +92,7 @@ export const BentoDashboard: React.FC<BentoDashboardProps> = ({
   }
 
   const [includePlanned, setIncludePlanned] = useState(false);
-  const [activeChartTab, setActiveChartTab] = useState<'MACRO_MONTHLY' | 'SANKEY' | 'ACCOUNTS' | 'DAILY' | 'MONTHLY' | 'FORECAST'>('MACRO_MONTHLY');
   const [summaryViewTab, setSummaryViewTab] = useState<'SALDI' | 'FLUSSI' | 'TUTTI'>('SALDI');
-  const [isChartsVisible, setIsChartsVisible] = useState(true);
 
   // Calcolo totale movimenti programmati da accounts + funds oppure da planned prop
   const totalPlannedCount = useMemo(() => {
@@ -499,213 +491,6 @@ export const BentoDashboard: React.FC<BentoDashboardProps> = ({
         todaySpent={todayExpenses}
         totalCycleBudget={entrateMese > 0 ? entrateMese : 1500}
       />
-
-      {/* Sezione Grafici e Tendenze: Raggruppamento Ottimizzato con Selettore a Pillola One UI */}
-      <div id="dashboard-charts-grouped-section" className="space-y-3 pt-1">
-        {/* Header di Sezione & Selettore Grafici */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#1C1C1E] p-3 sm:p-4 rounded-[22px] border border-slate-200/80 dark:border-white/5 shadow-2xs">
-          <div className="flex items-center justify-between gap-2.5">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-9 h-9 rounded-[14px] bg-[#E31B23]/10 dark:bg-[#2A2A2E] text-[#E31B23] flex items-center justify-center flex-shrink-0">
-                <LineChart size={18} strokeWidth={2} />
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-sm sm:text-base font-medium text-slate-900 dark:text-[#F5F5F7] tracking-tight">
-                  Analisi Grafica & Tendenze
-                </h3>
-                <p className="text-[11px] sm:text-xs text-slate-500 dark:text-[#8E8E93] leading-snug">
-                  {activeChartTab === 'ACCOUNTS' && 'Andamento e proiezione dei saldi per singolo conto'}
-                  {activeChartTab === 'SANKEY' && 'Flusso dinamico: dai guadagni alle categorie di spesa'}
-                  {activeChartTab === 'MACRO_MONTHLY' && 'Ripartizione mensile: Guadagni e Spese con analisi 50/30/20 (Devo, Ho bisogno, Voglio)'}
-                  {activeChartTab === 'DAILY' && 'Flussi giornalieri entrate vs uscite sui 30 giorni'}
-                  {activeChartTab === 'MONTHLY' && 'Trend storico mensile e confronto col budget'}
-                  {activeChartTab === 'FORECAST' && 'Evoluzione saldo calcolato fino al 9 successivo'}
-                </p>
-              </div>
-            </div>
-
-            {/* Pulsante Comprimi/Espandi Grafici per smartphone */}
-            <button
-              type="button"
-              onClick={() => {
-                setIsChartsVisible(!isChartsVisible);
-                haptics.tap();
-              }}
-              className="sm:hidden p-1.5 rounded-full bg-slate-100 dark:bg-[#2A2A2E] text-slate-600 dark:text-[#F5F5F7] hover:bg-slate-200 transition-colors shrink-0"
-              title={isChartsVisible ? 'Comprimi grafici per risparmiare spazio' : 'Espandi grafici'}
-            >
-              {isChartsVisible ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            </button>
-          </div>
-
-          {/* Pill Switcher One UI (visibile se grafici espansi o su desktop) */}
-          {isChartsVisible && (
-            <div className="flex bg-slate-100 dark:bg-[#242426] p-1 rounded-full text-xs font-medium overflow-x-auto no-scrollbar border border-slate-200/60 dark:border-white/5 flex-shrink-0">
-            <button
-              type="button"
-              id="chart-tab-macro-monthly"
-              onClick={() => {
-                setActiveChartTab('MACRO_MONTHLY');
-                haptics.tap();
-              }}
-              className={`px-3.5 py-1.5 rounded-full transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer active:scale-95 ${
-                activeChartTab === 'MACRO_MONTHLY'
-                  ? 'bg-[#E31B23] text-white shadow-2xs font-semibold'
-                  : 'text-slate-600 dark:text-[#8E8E93] hover:text-slate-900 dark:hover:text-[#F5F5F7]'
-              }`}
-            >
-              <BarChart3 size={13} strokeWidth={2} />
-              <span>Entrate vs Spese (Mese per Mese)</span>
-            </button>
-
-            <button
-              type="button"
-              id="chart-tab-sankey"
-              onClick={() => {
-                setActiveChartTab('SANKEY');
-                haptics.tap();
-              }}
-              className={`px-3.5 py-1.5 rounded-full transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer active:scale-95 ${
-                activeChartTab === 'SANKEY'
-                  ? 'bg-[#E31B23] text-white shadow-2xs font-semibold'
-                  : 'text-slate-600 dark:text-[#8E8E93] hover:text-slate-900 dark:hover:text-[#F5F5F7]'
-              }`}
-            >
-              <GitFork size={13} strokeWidth={2} />
-              <span>Flusso Sankey</span>
-            </button>
-
-            <button
-              type="button"
-              id="chart-tab-daily"
-              onClick={() => {
-                setActiveChartTab('DAILY');
-                haptics.tap();
-              }}
-              className={`px-3.5 py-1.5 rounded-full transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer active:scale-95 ${
-                activeChartTab === 'DAILY'
-                  ? 'bg-[#E31B23] text-white shadow-2xs font-semibold'
-                  : 'text-slate-600 dark:text-[#8E8E93] hover:text-slate-900 dark:hover:text-[#F5F5F7]'
-              }`}
-            >
-              <TrendingUp size={13} strokeWidth={2} />
-              <span>Entrate/Uscite 30gg</span>
-            </button>
-
-            <button
-              type="button"
-              id="chart-tab-monthly"
-              onClick={() => {
-                setActiveChartTab('MONTHLY');
-                haptics.tap();
-              }}
-              className={`px-3.5 py-1.5 rounded-full transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer active:scale-95 ${
-                activeChartTab === 'MONTHLY'
-                  ? 'bg-[#E31B23] text-white shadow-2xs font-semibold'
-                  : 'text-slate-600 dark:text-[#8E8E93] hover:text-slate-900 dark:hover:text-[#F5F5F7]'
-              }`}
-            >
-              <BarChart3 size={13} strokeWidth={2} />
-              <span>Trend Mensile</span>
-            </button>
-
-            {chartPoints.length > 0 && (
-              <button
-                type="button"
-                id="chart-tab-forecast"
-                onClick={() => {
-                  setActiveChartTab('FORECAST');
-                  haptics.tap();
-                }}
-                className={`px-3.5 py-1.5 rounded-full transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer active:scale-95 ${
-                  activeChartTab === 'FORECAST'
-                    ? 'bg-[#E31B23] text-white shadow-2xs font-semibold'
-                    : 'text-slate-600 dark:text-[#8E8E93] hover:text-slate-900 dark:hover:text-[#F5F5F7]'
-                }`}
-              >
-                <Sparkles size={13} strokeWidth={2} />
-                <span>Proiezione Saldo</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              id="chart-tab-accounts"
-              onClick={() => {
-                setActiveChartTab('ACCOUNTS');
-                haptics.tap();
-              }}
-              className={`px-3.5 py-1.5 rounded-full transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer active:scale-95 ${
-                activeChartTab === 'ACCOUNTS'
-                  ? 'bg-[#E31B23] text-white shadow-2xs font-semibold'
-                  : 'text-slate-600 dark:text-[#8E8E93] hover:text-slate-900 dark:hover:text-[#F5F5F7]'
-              }`}
-            >
-              <Wallet size={13} strokeWidth={2} />
-              <span>Saldi per Conto</span>
-            </button>
-          </div>
-          )}
-        </div>
-
-        {/* Render Condizionale del Grafico Attivo (Previene scroll verticale infinito) */}
-        {isChartsVisible && (
-          <div className="transition-all duration-200">
-            {activeChartTab === 'ACCOUNTS' && (
-              <AccountsBalanceTimelineChart
-                accounts={accounts}
-                funds={funds}
-                movements={movements}
-                planned={planned}
-                deadlines={deadlines}
-              />
-            )}
-
-            {activeChartTab === 'SANKEY' && (
-              <CashflowSankeyChart
-                movements={movements}
-                subcategories={subcategories}
-              />
-            )}
-
-            {activeChartTab === 'MACRO_MONTHLY' && (
-              <MonthlyMacroBreakdownChart
-                movements={movements}
-                subcategories={subcategories}
-                planned={planned}
-                deadlines={deadlines}
-              />
-            )}
-
-            {activeChartTab === 'DAILY' && (
-              <DailySpendingIncomeChart
-                movements={movements}
-                daily30Days={chartPoints}
-                planned={planned}
-                deadlines={deadlines}
-              />
-            )}
-
-            {activeChartTab === 'MONTHLY' && (
-              <MonthlySpendingTrendsChart
-                movements={movements}
-                subcategories={subcategories}
-                planned={planned}
-                deadlines={deadlines}
-              />
-            )}
-
-            {activeChartTab === 'FORECAST' && chartPoints.length > 0 && (
-              <AccountForecastChart
-                data={chartPoints}
-                totaleOggiCalcolato={totaleOggiCalcolato}
-                totaleFineMese={totaleFineMese}
-                totaleAlNove={totaleAlNove}
-              />
-            )}
-          </div>
-        )}
-      </div>
     </div>
   );
 };

@@ -1,71 +1,49 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <!-- Background Squircle Gradient -->
     <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#242428"/>
       <stop offset="50%" stop-color="#18181B"/>
       <stop offset="100%" stop-color="#0F0F12"/>
     </linearGradient>
-
-    <!-- Primary Accent Gradient (Samsung One UI Red #E31B23) -->
-    <linearGradient id="primaryRed" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="redGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#FF3B30"/>
       <stop offset="100%" stop-color="#E31B23"/>
     </linearGradient>
-
-    <!-- Emerald Growth Gradient -->
     <linearGradient id="emeraldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#34D399"/>
       <stop offset="100%" stop-color="#059669"/>
     </linearGradient>
-
-    <!-- Subtle Outer Glow -->
-    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="16" result="blur" />
-      <feComposite in="SourceGraphic" in2="blur" operator="over" />
-    </filter>
-
-    <!-- Card Shadow -->
-    <filter id="cardShadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000000" flood-opacity="0.5"/>
-    </filter>
   </defs>
 
-  <!-- One UI Squircle Container -->
-  <rect x="24" y="24" width="464" height="464" rx="124" fill="url(#bgGrad)" filter="url(#cardShadow)"/>
+  <!-- Background container -->
+  <rect width="512" height="512" rx="128" fill="url(#bgGrad)"/>
+  <rect x="8" y="8" width="496" height="496" rx="120" fill="none" stroke="#FFFFFF" stroke-opacity="0.15" stroke-width="4"/>
   
-  <!-- Subtle Border Stroke -->
-  <rect x="25" y="25" width="462" height="462" rx="123" fill="none" stroke="#FFFFFF" stroke-opacity="0.1" stroke-width="2"/>
+  <!-- Outer Glow Ring -->
+  <circle cx="256" cy="256" r="180" fill="#E31B23" fill-opacity="0.12"/>
 
-  <!-- Inner Soft Accent Circle -->
-  <circle cx="256" cy="256" r="170" fill="#E31B23" fill-opacity="0.06"/>
+  <!-- Shield Base -->
+  <path d="M256 90 C340 130 400 136 420 144 C424 250 380 370 256 440 C132 370 88 250 92 144 C112 136 172 130 256 90 Z" 
+        fill="#1C1C22" 
+        stroke="#3A3A46" 
+        stroke-width="8"/>
 
-  <!-- Modern Financial Shield / Family Vault Silhouette -->
-  <g transform="translate(106, 106) scale(0.585)">
-    <!-- Base Shield -->
-    <path d="M256 32 C350 78 430 84 460 92 C464 220 420 380 256 476 C92 380 48 220 52 92 C82 84 162 78 256 32 Z" 
-          fill="#1C1C20" 
-          stroke="#383842" 
-          stroke-width="8"/>
+  <!-- Financial Flow Arcs -->
+  <path d="M160 330 C190 300 230 320 260 260 C290 200 320 180 360 160" 
+        fill="none" 
+        stroke="url(#emeraldGrad)" 
+        stroke-width="22" 
+        stroke-linecap="round"/>
+  <circle cx="360" cy="160" r="16" fill="url(#emeraldGrad)"/>
 
-    <!-- Upward Dynamic Financial Flow (Emerald and Red Arc) -->
-    <path d="M140 330 C180 300 220 320 256 260 C290 200 320 180 370 150" 
-          fill="none" 
-          stroke="url(#emeraldGrad)" 
-          stroke-width="24" 
-          stroke-linecap="round"/>
+  <!-- Red Power Loop -->
+  <path d="M170 220 C195 170 240 150 280 170 C325 190 340 240 315 285 C290 330 235 345 190 320" 
+        fill="none" 
+        stroke="url(#redGrad)" 
+        stroke-width="20" 
+        stroke-linecap="round"/>
 
-    <circle cx="370" cy="150" r="20" fill="url(#emeraldGrad)"/>
-
-    <!-- Primary One UI Red Accent Loop / Sync Pulse -->
-    <path d="M150 210 C180 160 230 140 280 160 C330 180 350 240 320 290 C290 340 230 360 180 330" 
-          fill="none" 
-          stroke="url(#primaryRed)" 
-          stroke-width="22" 
-          stroke-linecap="round"/>
-
-    <!-- Central Family / Stability Node -->
-    <circle cx="256" cy="256" r="32" fill="url(#primaryRed)" filter="url(#softGlow)"/>
-    <circle cx="256" cy="256" r="14" fill="#FFFFFF"/>
-  </g>
+  <!-- Center Core -->
+  <circle cx="256" cy="256" r="30" fill="url(#redGrad)"/>
+  <circle cx="256" cy="256" r="14" fill="#FFFFFF"/>
 </svg>

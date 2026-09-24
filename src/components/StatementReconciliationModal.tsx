@@ -42,6 +42,67 @@ import {
 } from '../services/ReconciliationService';
 import { formatCurrency, formatDateIT } from '../utils/formatters';
 
+const loadPdfJs = (): Promise<any> => {
+  return new Promise((resolve, reject) => {
+    if ((window as any).pdfjsLib) {
+      resolve((window as any).pdfjsLib);
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js';
+    script.onload = () => {
+      const pdfjsLib = (window as any).pdfjsLib;
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+      resolve(pdfjsLib);
+    };
+    script.onerror = (err) => {
+      reject(new Error('Impossibile caricare il modulo di decodifica PDF. Verifica la tua connessione internet.'));
+    };
+    document.head.appendChild(script);
+  });
+};
+
+const extractTextFromPdf = async (file: File): Promise<string> => {
+  const pdfjsLib = await loadPdfJs();
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  
+  let fullText = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const textContent = await page.getTextContent();
+    const items = textContent.items as any[];
+
+    // Raggruppa gli elementi per coordinata verticale (transform[5] è la coordinata Y)
+    // Usiamo una tolleranza di 4 pixel per compensare lievi fluttuazioni di posizionamento
+    const linesMap: { [key: number]: any[] } = {};
+    items.forEach(item => {
+      if (!item.str || item.str.trim() === '') return;
+      const y = Math.round(item.transform[5]);
+      let foundY = Object.keys(linesMap).map(Number).find(existingY => Math.abs(existingY - y) < 4);
+      if (foundY !== undefined) {
+        linesMap[foundY].push(item);
+      } else {
+        linesMap[y] = [item];
+      }
+    });
+
+    // Ordina le coordinate Y in ordine decrescente (la parte superiore della pagina ha coordinate Y più elevate)
+    const sortedY = Object.keys(linesMap).map(Number).sort((a, b) => b - a);
+
+    const pageLines = sortedY.map(y => {
+      // Ordina gli elementi sulla stessa riga per coordinata X (transform[4])
+      const lineItems = linesMap[y].sort((a, b) => a.transform[4] - b.transform[4]);
+      return lineItems.map(item => item.str).join(' ');
+    });
+
+    fullText += pageLines.join('\n') + '\n';
+  }
+  
+  return fullText;
+};
+
 interface StatementReconciliationModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -190,8 +251,19 @@ export const StatementReconciliationModal: React.FC<StatementReconciliationModal
     try {
       const lowerName = file.name.toLowerCase();
       const isExcel = lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls');
+      const isPdf = lowerName.endsWith('.pdf');
 
-      if (isExcel) {
+      if (isPdf) {
+        setParsingStatus('Caricamento decodificatore PDF e analisi testi...');
+        const extractedText = await extractTextFromPdf(file);
+        setRawText(extractedText);
+
+        setParsingStatus('Analisi e riconciliazione automatica con il conto...');
+        await new Promise(resolve => setTimeout(resolve, 50));
+        const parsed = parseBankStatement(extractedText);
+        setParseResult(parsed);
+        runAnalysis(parsed.rows, selectedAccountId, dateToleranceDays);
+      } else if (isExcel) {
         setParsingStatus('Decodifica del foglio di calcolo Excel...');
         const buffer = await file.arrayBuffer();
         let workbook;
@@ -580,7 +652,7 @@ export const StatementReconciliationModal: React.FC<StatementReconciliationModal
                   }`}
                 >
                   <Upload size={14} />
-                  <span>Carica File Estratto Conto (CSV, TXT, Excel, OFX)</span>
+                  <span>Carica File Estratto Conto (PDF, CSV, TXT, Excel, OFX)</span>
                 </button>
                 <button
                   type="button"
@@ -606,7 +678,7 @@ export const StatementReconciliationModal: React.FC<StatementReconciliationModal
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".csv,.txt,.tsv,.xlsx,.xls,.ofx,.qif"
+                    accept=".csv,.txt,.tsv,.xlsx,.xls,.ofx,.qif,.pdf"
                     onChange={handleFileChange}
                     className="hidden"
                   />
@@ -614,12 +686,15 @@ export const StatementReconciliationModal: React.FC<StatementReconciliationModal
                     <Upload size={28} />
                   </div>
                   <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-1">
-                    Trascina qui l'estratto conto oppure clicca per selezionare il file
+                     Trascina qui l'estratto conto oppure clicca per selezionare il file
                   </h3>
                   <p className="text-xs text-slate-400 max-w-md mx-auto mb-4">
-                    Supporta file Excel ed esportazioni da qualsiasi banca italiana (Intesa Sanpaolo, UniCredit, Poste Italiane, Fineco, BBVA, Revolut, BPER, N26, BPM, ING, ecc.)
+                    Supporta file PDF (Monte dei Paschi di Siena MPS, ecc.), fogli Excel e file di testo esportati da qualsiasi banca italiana.
                   </p>
                   <div className="flex items-center justify-center gap-2 flex-wrap">
+                    <span className="px-2 py-1 rounded-lg bg-red-100/70 dark:bg-red-950/60 text-[10px] font-mono font-bold text-rose-600 dark:text-rose-400 border border-rose-300/60 dark:border-rose-800">
+                      .PDF (MPS, ecc.)
+                    </span>
                     <span className="px-2 py-1 rounded-lg bg-emerald-100/70 dark:bg-emerald-950/60 text-[10px] font-mono font-bold text-emerald-800 dark:text-emerald-300 border border-emerald-300/60 dark:border-emerald-800">
                       .XLSX / .XLS
                     </span>

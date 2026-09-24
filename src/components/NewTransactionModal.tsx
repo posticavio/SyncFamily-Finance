@@ -938,39 +938,39 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
                       setShowAccountPicker('origin');
                       haptics.tap();
                     }}
-                    className="p-2.5 bg-white dark:bg-[#242426] rounded-2xl border border-slate-200/80 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20 transition-all cursor-pointer flex items-center justify-between group active:scale-[0.99]"
+                    className="p-3 bg-white dark:bg-[#242426] rounded-2xl border border-slate-200/80 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20 transition-all cursor-pointer flex items-center justify-between group active:scale-[0.99]"
                   >
-                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div 
-                        className="w-8 h-8 rounded-xl flex items-center justify-center text-white flex-shrink-0 shadow-2xs text-xs font-bold"
+                        className="w-10 h-10 rounded-xl flex items-center justify-center text-white flex-shrink-0 shadow-2xs text-xs font-bold"
                         style={{ backgroundColor: selectedOriginAccount?.color || '#E31B23' }}
                       >
                         {selectedOriginAccount?.isFund ? (
-                          <PiggyBank size={15} />
+                          <PiggyBank size={18} />
                         ) : selectedOriginAccount?.group === 'BANCA' ? (
-                          <Landmark size={15} />
+                          <Landmark size={18} />
                         ) : selectedOriginAccount?.group === 'CARTA' ? (
-                          <CreditCard size={15} />
+                          <CreditCard size={18} />
                         ) : selectedOriginAccount?.group === 'CONTANTI' ? (
-                          <Banknote size={15} />
+                          <Banknote size={18} />
                         ) : (
-                          <Coins size={15} />
+                          <Coins size={18} />
                         )}
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                      <div className="min-w-0 flex-1 pr-1">
+                        <span className="text-[9.5px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">
                           Da Conto
                         </span>
-                        <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                        <div className="text-xs font-bold text-slate-900 dark:text-white leading-tight break-words mb-0.5">
                           {selectedOriginAccount?.name || 'Seleziona'}
+                        </div>
+                        <div className="text-[11px] font-bold font-numeric tabular-nums text-slate-500 dark:text-slate-400">
+                          {formatCurrency(selectedOriginAccount?.balance ?? 0)}
                         </div>
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0 ml-2">
-                      <span className="text-[11px] font-bold font-numeric tabular-nums text-slate-600 dark:text-slate-300 block">
-                        {formatCurrency(selectedOriginAccount?.balance ?? 0)}
-                      </span>
-                      <span className="text-[9px] text-indigo-600 dark:text-indigo-400 font-semibold group-hover:underline">
+                      <span className="text-[10px] px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-bold group-hover:bg-slate-200 dark:group-hover:bg-slate-700 transition-colors">
                         Cambia
                       </span>
                     </div>
@@ -982,39 +982,39 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
                       setShowAccountPicker('dest');
                       haptics.tap();
                     }}
-                    className="p-2.5 bg-white dark:bg-[#242426] rounded-2xl border border-indigo-200/80 dark:border-indigo-900/50 hover:border-indigo-300 transition-all cursor-pointer flex items-center justify-between group active:scale-[0.99]"
+                    className="p-3 bg-white dark:bg-[#242426] rounded-2xl border border-indigo-200/80 dark:border-indigo-900/50 hover:border-indigo-300 transition-all cursor-pointer flex items-center justify-between group active:scale-[0.99]"
                   >
-                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div 
-                        className="w-8 h-8 rounded-xl flex items-center justify-center text-white flex-shrink-0 shadow-2xs text-xs font-bold"
+                        className="w-10 h-10 rounded-xl flex items-center justify-center text-white flex-shrink-0 shadow-2xs text-xs font-bold"
                         style={{ backgroundColor: selectedDestAccount?.color || '#6366f1' }}
                       >
                         {selectedDestAccount?.isFund ? (
-                          <PiggyBank size={15} />
+                          <PiggyBank size={18} />
                         ) : selectedDestAccount?.group === 'BANCA' ? (
-                          <Landmark size={15} />
+                          <Landmark size={18} />
                         ) : selectedDestAccount?.group === 'CARTA' ? (
-                          <CreditCard size={15} />
+                          <CreditCard size={18} />
                         ) : selectedDestAccount?.group === 'CONTANTI' ? (
-                          <Banknote size={15} />
+                          <Banknote size={18} />
                         ) : (
-                          <Coins size={15} />
+                          <Coins size={18} />
                         )}
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block">
+                      <div className="min-w-0 flex-1 pr-1">
+                        <span className="text-[9.5px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block mb-0.5">
                           A Conto
                         </span>
-                        <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                        <div className="text-xs font-bold text-slate-900 dark:text-white leading-tight break-words mb-0.5">
                           {selectedDestAccount?.name || 'Seleziona'}
+                        </div>
+                        <div className="text-[11px] font-bold font-numeric tabular-nums text-indigo-600 dark:text-indigo-400">
+                          {formatCurrency(selectedDestAccount?.balance ?? 0)}
                         </div>
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0 ml-2">
-                      <span className="text-[11px] font-bold font-numeric tabular-nums text-indigo-600 dark:text-indigo-400 block">
-                        {formatCurrency(selectedDestAccount?.balance ?? 0)}
-                      </span>
-                      <span className="text-[9px] text-indigo-600 dark:text-indigo-400 font-semibold group-hover:underline">
+                      <span className="text-[10px] px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/40 transition-colors">
                         Cambia
                       </span>
                     </div>
@@ -1342,20 +1342,20 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
               )}
             </div>
 
-            {/* Opzioni Avanzate: Natura, Regola 50/30/20, Note & Modello */}
+            {/* Opzioni Avanzate: Natura, Regola 50/30/20, Note, Progetto & Allegati */}
             <div className="bg-slate-50 dark:bg-[#1C1C1E] rounded-[22px] border border-slate-200/70 dark:border-white/5 p-3 space-y-2.5 shadow-xs">
-              {/* Mobile Accordion Toggle Button */}
+              {/* Progressive Disclosure Accordion Toggle */}
               <button
                 type="button"
                 onClick={() => {
                   setShowAdvanced(!showAdvanced);
                   haptics.tap();
                 }}
-                className="w-full flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-300 md:hidden cursor-pointer"
+                className="w-full flex items-center justify-between text-xs font-bold text-slate-700 dark:text-[#F5F5F7] hover:text-[#E31B23] transition-colors cursor-pointer py-0.5"
               >
                 <div className="flex items-center gap-1.5">
                   <SlidersHorizontal size={13} className="text-slate-400" />
-                  <span>Natura, Regola 50/30/20 & Note</span>
+                  <span>Dettagli Avanzati (50/30/20, Natura, Note)</span>
                 </div>
                 {showAdvanced ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
               </button>

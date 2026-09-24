@@ -143,3 +143,62 @@ body, .bento-card, .glass-panel, .glass-dropdown {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Regole Ottimizzate per Stampa ed Esportazione PDF A4 */
+@media print {
+  @page {
+    margin: 10mm 12mm;
+    size: auto;
+  }
+
+  body, html {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    overflow: visible !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Nascondi barre, navigazione, header, footer e pulsanti applicativi */
+  header,
+  nav,
+  #mobile-bottom-nav,
+  #analytics-chart-selector-bar,
+  .no-print,
+  button,
+  .print-hide {
+    display: none !important;
+  }
+
+  /* Foglio A4 in stampa */
+  .a4-print-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+  }
+
+  .print-page-break-avoid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Assicura che i testi e i grafici recharts siano leggibili e stampino correttamente con i loro colori */
+  .a4-print-container {
+    color: #0f172a !important;
+  }
+
+  .a4-print-container .bg-white {
+    background-color: #ffffff !important;
+  }
+
+  .a4-print-container .bg-slate-50 {
+    background-color: #f1f5f9 !important;
+  }
+}

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="cBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FBBF24"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+    <filter id="shadowC" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="128" fill="url(#cBg)"/>
+  <rect x="8" y="8" width="496" height="496" rx="120" fill="none" stroke="#FFFFFF" stroke-opacity="0.25" stroke-width="4"/>
+
+  <!-- Bank / Temple Icon -->
+  <path d="M256 130 L392 196 L120 196 Z" fill="#FFFFFF" filter="url(#shadowC)"/>
+  <rect x="144" y="216" width="36" height="120" rx="8" fill="#FFFFFF" filter="url(#shadowC)"/>
+  <rect x="218" y="216" width="36" height="120" rx="8" fill="#FFFFFF" filter="url(#shadowC)"/>
+  <rect x="292" y="216" width="36" height="120" rx="8" fill="#FFFFFF" filter="url(#shadowC)"/>
+  <rect x="366" y="216" width="36" height="120" rx="8" fill="#FFFFFF" filter="url(#shadowC)"/>
+  <rect x="100" y="348" width="312" height="34" rx="10" fill="#FFFFFF" filter="url(#shadowC)"/>
+</svg>

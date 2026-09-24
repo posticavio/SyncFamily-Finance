@@ -11,12 +11,13 @@ import {
   StickyNote, 
   Settings, 
   Landmark,
+  LineChart,
   X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { haptics } from '../utils/haptics';
 
-export type MainTab = 'DASHBOARD' | 'TRANSAZIONI' | 'REPORT_AI' | 'CALENDARIO' | 'BUDGET' | 'PROGETTI' | 'NOTE' | 'IMPOSTAZIONI' | 'CONTI';
+export type MainTab = 'DASHBOARD' | 'ANALISI' | 'TRANSAZIONI' | 'REPORT_AI' | 'CALENDARIO' | 'BUDGET' | 'PROGETTI' | 'NOTE' | 'IMPOSTAZIONI' | 'CONTI';
 
 interface MobileBottomNavProps {
   activeTab: MainTab;
@@ -31,12 +32,13 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 }) => {
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
 
-  const isMoreTabActive = ['CALENDARIO', 'REPORT_AI', 'PROGETTI', 'NOTE', 'IMPOSTAZIONI', 'CONTI'].includes(activeTab);
+  const isMoreTabActive = ['ANALISI', 'CALENDARIO', 'REPORT_AI', 'PROGETTI', 'NOTE', 'IMPOSTAZIONI', 'CONTI'].includes(activeTab);
 
   const moreSections = [
     {
-      title: 'Pianificazione & AI',
+      title: 'Analisi & Pianificazione',
       items: [
+        { id: 'ANALISI' as MainTab, label: 'Analisi & Grafici', desc: 'Flussi, Sankey e 50/30/20', icon: LineChart, color: 'text-[#E31B23] bg-[#E31B23]/15' },
         { id: 'REPORT_AI' as MainTab, label: 'Report AI Gemini', desc: 'Analisi settimanale', icon: Sparkles, color: 'text-purple-500 bg-purple-500/15' },
         { id: 'CALENDARIO' as MainTab, label: 'Calendario', desc: 'Scadenze e flussi cassa', icon: Calendar, color: 'text-blue-500 bg-blue-500/15' },
         { id: 'PROGETTI' as MainTab, label: 'Progetti & Prestiti', desc: 'Mutui e finanziamenti', icon: FolderKanban, color: 'text-indigo-500 bg-indigo-500/15' },

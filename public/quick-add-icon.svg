@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="qBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF3B30"/>
+      <stop offset="100%" stop-color="#C4121A"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="128" fill="url(#qBg)"/>
+  <rect x="8" y="8" width="496" height="496" rx="120" fill="none" stroke="#FFFFFF" stroke-opacity="0.25" stroke-width="4"/>
+
+  <!-- Center Circle Base -->
+  <circle cx="256" cy="256" r="148" fill="#FFFFFF" fill-opacity="0.18"/>
+
+  <!-- Bold Plus Icon -->
+  <path d="M256 150 L256 362 M150 256 L362 256" stroke="#FFFFFF" stroke-width="44" stroke-linecap="round" filter="url(#shadow)"/>
+  
+  <!-- Subtle Euro badge in bottom right corner -->
+  <circle cx="392" cy="392" r="64" fill="#FFFFFF" filter="url(#shadow)"/>
+  <text x="392" y="412" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Google Sans', sans-serif" font-size="56" font-weight="900" fill="#C4121A" text-anchor="middle">€</text>
+</svg>

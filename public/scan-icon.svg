@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="sBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10B981"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+    <filter id="shadowS" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="128" fill="url(#sBg)"/>
+  <rect x="8" y="8" width="496" height="496" rx="120" fill="none" stroke="#FFFFFF" stroke-opacity="0.25" stroke-width="4"/>
+
+  <!-- Receipt Outline -->
+  <rect x="160" y="140" width="192" height="232" rx="20" fill="#FFFFFF" filter="url(#shadowS)"/>
+  <rect x="190" y="180" width="132" height="14" rx="7" fill="#10B981" fill-opacity="0.5"/>
+  <rect x="190" y="210" width="96" height="12" rx="6" fill="#047857" fill-opacity="0.4"/>
+  <rect x="190" y="235" width="112" height="12" rx="6" fill="#047857" fill-opacity="0.4"/>
+  <rect x="190" y="275" width="132" height="16" rx="8" fill="#047857"/>
+
+  <!-- Camera / Viewfinder Corners -->
+  <path d="M120 160 L120 120 L160 120" fill="none" stroke="#FFFFFF" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M392 160 L392 120 L352 120" fill="none" stroke="#FFFFFF" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M120 352 L120 392 L160 392" fill="none" stroke="#FFFFFF" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M392 352 L392 392 L352 392" fill="none" stroke="#FFFFFF" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- AI Laser Scan Bar -->
+  <line x1="140" y1="256" x2="372" y2="256" stroke="#FEF08A" stroke-width="12" stroke-linecap="round" filter="url(#shadowS)"/>
+</svg>

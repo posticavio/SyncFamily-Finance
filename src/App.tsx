@@ -29,6 +29,7 @@ import { ProjectsView } from './components/ProjectsView';
 import { NotepadView } from './components/NotepadView';
 import { StatementReconciliationModal } from './components/StatementReconciliationModal';
 import { WeeklyReportView } from './components/WeeklyReportView';
+import { AnalyticsView } from './components/AnalyticsView';
 import { SpotlightSearchModal } from './components/SpotlightSearchModal';
 import { ReceiptScannerModal } from './components/ReceiptScannerModal';
 import { PurchaseImpactModal } from './components/PurchaseImpactModal';
@@ -45,7 +46,7 @@ import {
 } from './utils/financialDate';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'TRANSAZIONI' | 'REPORT_AI' | 'CALENDARIO' | 'BUDGET' | 'PROGETTI' | 'NOTE' | 'IMPOSTAZIONI' | 'CONTI'>('DASHBOARD');
+  const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'ANALISI' | 'TRANSAZIONI' | 'REPORT_AI' | 'CALENDARIO' | 'BUDGET' | 'PROGETTI' | 'NOTE' | 'IMPOSTAZIONI' | 'CONTI'>('DASHBOARD');
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   // Data States
@@ -369,6 +370,10 @@ export default function App() {
           break;
         case 'a':
           e.preventDefault();
+          setActiveTab('ANALISI');
+          break;
+        case 'r':
+          e.preventDefault();
           setActiveTab('REPORT_AI');
           break;
         case 'p':
@@ -571,10 +576,29 @@ export default function App() {
                     onNavigateToProjects={() => setActiveTab('PROGETTI')}
                     onNavigateToNotes={() => setActiveTab('NOTE')}
                     onNavigateToReports={() => setActiveTab('REPORT_AI')}
+                    onNavigateToAnalytics={() => setActiveTab('ANALISI')}
                     onRefresh={refreshAll}
                   />
                 </div>
               )
+            )}
+
+            {/* Tab: ANALISI & GRAFICI (Tab Principale Dedicata) */}
+            {activeTab === 'ANALISI' && (
+              <AnalyticsView
+                movements={movements}
+                subcategories={subcategories}
+                accounts={forecasts.accounts}
+                funds={forecasts.funds}
+                daily30Days={forecasts.daily30Days}
+                planned={planned}
+                deadlines={deadlines}
+                totaleOggiCalcolato={forecasts.totale_oggi_calcolato}
+                totaleFineMese={forecasts.totale_fine_mese}
+                totaleAlNove={forecasts.totale_al_nove}
+                onNavigateToTransactions={() => setActiveTab('TRANSAZIONI')}
+                onNavigateToBudget={() => setActiveTab('BUDGET')}
+              />
             )}
 
             {/* Tab 2: TUTTI I MOVIMENTI */}

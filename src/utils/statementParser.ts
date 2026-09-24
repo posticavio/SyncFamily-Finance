@@ -360,6 +360,201 @@ function parseOFX(text: string): StatementParseResult {
 }
 
 /**
+ * Parser speciale per estratti conto PDF incollati o esportazioni con righe multiline (es. Monte dei Paschi di Siena MPS).
+ * Ricostruisce le transazioni in cui la descrizione è distribuita su più righe e l'importo è posizionato alla fine.
+ */
+export function parseMultilineTextStatement(text: string): StatementParseResult | null {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+  if (lines.length < 3) return null;
+
+  // Riconoscimento basato su parole chiave specifiche di MPS o formato di testo copia/incolla da PDF
+  const isMPS = text.toLowerCase().includes('monte dei paschi') || 
+                text.toLowerCase().includes('mps') || 
+                text.toLowerCase().includes('filiale disponente') ||
+                text.toLowerCase().includes('prelievo self service') ||
+                text.toLowerCase().includes('scritture passate sul suo conto');
+
+  if (!isMPS) {
+    const dateLineCount = lines.filter(l => /^\d{2}[-/.]\d{2}[-/.]\d{4}/.test(l)).length;
+    if (dateLineCount < 2 || text.includes(';') || text.includes('\t')) {
+      return null; // Fallback al parser CSV/tabellare standard
+    }
+  }
+
+  interface TempTx {
+    date: string;
+    rawDate: string;
+    descriptionLines: string[];
+    valutaDate?: string;
+    amount?: number;
+    type?: MovementType;
+  }
+
+  const transactions: TempTx[] = [];
+  let currentTx: TempTx | null = null;
+
+  const isNumericAmount = (str: string) => {
+    const clean = str.trim().replace(/\s/g, '').replace(/€/g, '');
+    if (!clean) return false;
+    return /^[-+]?[\d.]+(?:,\d{1,2})?$/.test(clean) || /^[-+]?\d+(?:\.\d{1,2})?$/.test(clean);
+  };
+
+  const dateRegex = /^(\d{2})[-/.](\d{2})[-/.](\d{4})/;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lowerLine = line.toLowerCase();
+
+    // Salta righe di intestazione/pié di pagina generiche del PDF
+    if (lowerLine.startsWith('contabile al') || 
+        lowerLine.startsWith('filiale di') || 
+        lowerLine.startsWith('conto in euro') ||
+        lowerLine.startsWith('pag. ') ||
+        lowerLine.startsWith('banca monte') ||
+        lowerLine.startsWith('gentile cliente') ||
+        lowerLine.startsWith('la preghiamo di') ||
+        lowerLine.startsWith('distinti saluti') ||
+        lowerLine.includes('data descrizione operazioni') ||
+        lowerLine.includes('codice fiscale') ||
+        lowerLine.includes('partita iva') ||
+        lowerLine.includes('gruppo bancario')) {
+      continue;
+    }
+
+    const dateMatch = line.match(dateRegex);
+
+    if (dateMatch) {
+      const dateStr = line.substring(0, 10);
+      const rest = line.substring(10).trim();
+      const isoDate = normalizeDateToISO(dateStr) || '';
+
+      const restParts = rest.split(/\s+/).filter(Boolean);
+      const isAmountLine = restParts.length > 0 && restParts.every(p => isNumericAmount(p));
+
+      if (isAmountLine && currentTx) {
+        // Trovata riga finale con la data valuta e l'importo/i
+        currentTx.valutaDate = isoDate;
+        
+        const parsedAmounts = restParts.map(p => parseAmountAndType(p));
+        const validAmount = parsedAmounts.find(a => a.isValid);
+        
+        if (validAmount) {
+          currentTx.amount = validAmount.amount;
+          currentTx.type = validAmount.type;
+
+          const rawLine = line;
+          const spacesBeforeAmount = rawLine.indexOf(restParts[0]) - 10;
+          
+          // Se c'è uno spazio ampio prima dell'importo (colonna Avere), è un'entrata
+          if (spacesBeforeAmount > 15) {
+            currentTx.type = 'ENTRATA';
+          }
+        }
+
+        // Regole semantiche per determinare la tipologia dai testi delle causali MPS
+        const fullDesc = currentTx.descriptionLines.join(' ').toLowerCase();
+        
+        if (fullDesc.includes('prelievo') || 
+            fullDesc.includes('addebito') || 
+            fullDesc.includes('mutuo') || 
+            fullDesc.includes('spesa') || 
+            fullDesc.includes('commissione') || 
+            fullDesc.includes('imposta di bollo') || 
+            fullDesc.includes('sdd') || 
+            fullDesc.includes('pagamento pos')) {
+          currentTx.type = 'USCITA';
+        }
+        
+        if (fullDesc.includes('accredito') || 
+            fullDesc.includes('stipendio') || 
+            fullDesc.includes('stornato') || 
+            fullDesc.includes('rimborso') || 
+            fullDesc.includes('versamento')) {
+          currentTx.type = 'ENTRATA';
+        }
+
+        // MPS: "BON. IST. ... ORD: <Persona>" -> se contiene ORD, di solito è un bonifico ricevuto (ENTRATA)
+        // se contiene "DISPOSTO" o non ha "ORD:" è un bonifico inviato (USCITA)
+        if (fullDesc.includes('bon. ist.') || fullDesc.includes('bonifico')) {
+          if (fullDesc.includes('ord:')) {
+            currentTx.type = 'ENTRATA';
+          } else {
+            currentTx.type = 'USCITA';
+          }
+        }
+
+        transactions.push(currentTx);
+        currentTx = null;
+      } else {
+        // Inizio di una nuova transazione
+        if (currentTx && currentTx.amount && currentTx.amount > 0) {
+          transactions.push(currentTx);
+        }
+
+        currentTx = {
+          date: isoDate,
+          rawDate: dateStr,
+          descriptionLines: [rest]
+        };
+      }
+    } else {
+      // Riga di continuazione della descrizione causale
+      if (currentTx) {
+        currentTx.descriptionLines.push(line);
+      }
+    }
+  }
+
+  // Aggiungi l'ultimo movimento se completo
+  if (currentTx && currentTx.amount && currentTx.amount > 0) {
+    transactions.push(currentTx);
+  }
+
+  if (transactions.length === 0) {
+    return null;
+  }
+
+  const rows: ParsedStatementRow[] = transactions.map((t, index) => {
+    const description = t.descriptionLines.join(' ').replace(/\s+/g, ' ').trim();
+    const type = t.type || 'USCITA';
+    
+    return {
+      id: `mps-pdf-${index}-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      rawDate: t.rawDate,
+      date: t.date,
+      description,
+      amount: t.amount || 0,
+      type,
+      rawAmount: t.amount?.toString() || '0',
+      originalValues: {
+        date: t.rawDate,
+        description,
+        amount: t.amount?.toString() || '0'
+      }
+    };
+  });
+
+  let totalInflow = 0;
+  let totalOutflow = 0;
+  for (const r of rows) {
+    if (r.type === 'ENTRATA') totalInflow += r.amount;
+    else totalOutflow += r.amount;
+  }
+
+  return {
+    rows,
+    detectedDelimiter: 'PDF_TEXT_RECONSTRUCTION',
+    detectedHeaders: ['Data Movimento', 'Descrizione Completa', 'Valuta', 'Importo'],
+    totalInflow: Math.round(totalInflow * 100) / 100,
+    totalOutflow: Math.round(totalOutflow * 100) / 100,
+    startDate: rows[0]?.date,
+    endDate: rows[rows.length - 1]?.date,
+    rawRowCount: rows.length,
+    errors: []
+  };
+}
+
+/**
  * Parser Universale per Estratto Conto Bancario
  * Supporta:
  * - Testo incollato da tabella bancaria (copia/incolla da Intesa, UniCredit, Poste, BBVA, Revolut, ecc.)
@@ -388,6 +583,12 @@ export function parseBankStatement(rawText: string, customOptions?: {
       rawRowCount: 0,
       errors: ['Nessun testo o file fornito.']
     };
+  }
+
+  // Controllo speciale per PDF incollato (es. MPS con righe multiline)
+  const multilineResult = parseMultilineTextStatement(cleanText);
+  if (multilineResult) {
+    return multilineResult;
   }
 
   // Controllo formato OFX / QIF

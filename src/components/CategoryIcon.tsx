@@ -23,6 +23,7 @@ import {
   Receipt,
   Palmtree,
   Car,
+  CarFront,
   Plane,
   Tv,
   Gift,
@@ -38,7 +39,10 @@ import {
   FileText,
   Laptop,
   Phone,
+  Smartphone,
+  Monitor,
   Shield,
+  ShieldCheck,
   Heart,
   Camera,
   Music,
@@ -47,83 +51,245 @@ import {
   Award,
   Compass,
   Sun,
+  Moon,
+  Star,
+  Cloud,
   Key,
+  KeyRound,
   Lock,
   Package,
   Clock,
   Bus,
   Bike,
   Wrench,
+  Hammer,
+  Paintbrush,
   Pill,
   BadgePercent,
+  TrendingUp,
+  TrendingDown,
+  Calculator,
+  Scale,
+  Building,
+  PawPrint,
+  Dog,
+  Cat,
+  Pizza,
+  Wine,
+  Beer,
+  Cake,
+  IceCream2,
+  Soup,
+  Cookie,
+  Fish,
+  Apple,
+  Salad,
+  Flame,
+  Droplet,
+  Trash2,
+  Plug,
+  Lightbulb,
+  ShowerHead,
+  Bed,
+  Sofa,
+  Shirt,
+  Watch,
+  Glasses,
+  Footprints,
+  Store,
+  Scissors,
+  Stethoscope,
+  Syringe,
+  Activity,
+  Gamepad2,
+  Headphones,
+  Radio,
+  Palette,
+  Ticket,
+  Tent,
+  Luggage,
+  Hotel,
+  Trees,
+  Flower2,
+  Sprout,
+  Users,
+  UserCheck,
+  PartyPopper,
+  HeartHandshake,
+  School,
+  Library,
+  Truck,
+  Ship,
+  Sailboat,
+  ParkingSquare,
+  FileSpreadsheet,
+  Send,
   LucideIcon
 } from 'lucide-react';
 import { MovementType } from '../types';
 
 export const iconMap: Record<string, LucideIcon> = {
+  // Spesa & Alimentari
   ShoppingCart,
+  ShoppingBag,
   Utensils,
+  Coffee,
+  Pizza,
+  Apple,
+  Salad,
+  Soup,
+  Fish,
+  Cookie,
+  Cake,
+  IceCream2,
+  Wine,
+  Beer,
+  Store,
+
+  // Casa, Utenze & Arredamento
   Home,
   Zap,
+  Flame,
+  Droplet,
   Wifi,
-  Fuel,
-  Train,
-  HeartPulse,
-  Dumbbell,
-  ShoppingBag,
-  Briefcase,
-  Banknote,
-  Coins,
-  ArrowLeftRight,
-  Tag,
-  PlusCircle,
-  Landmark,
-  CreditCard,
-  Wallet,
-  ShieldAlert,
-  Receipt,
-  Palmtree,
+  Trash2,
+  Plug,
+  Lightbulb,
+  ShowerHead,
+  Bed,
+  Sofa,
+  Hammer,
+  Paintbrush,
+  Wrench,
+  Key,
+  KeyRound,
+  Lock,
+
+  // Trasporti & Veicoli
   Car,
+  CarFront,
+  Fuel,
+  ParkingSquare,
+  Bus,
+  Train,
   Plane,
-  Tv,
-  Gift,
-  Coffee,
-  GraduationCap,
+  Bike,
+  Truck,
+  Ship,
+  Sailboat,
+
+  // Salute, Benessere & Cura Personale
+  HeartPulse,
+  Stethoscope,
+  Pill,
+  Syringe,
+  Activity,
+  Dumbbell,
+  Scissors,
+  Shirt,
+  Watch,
+  Glasses,
+  Footprints,
+
+  // Animali & Natura
+  PawPrint,
+  Dog,
+  Cat,
+  Trees,
+  Flower2,
+  Sprout,
+
+  // Famiglia, Istruzione & Relazioni
   Baby,
   Smile,
+  Heart,
+  Users,
+  UserCheck,
+  School,
+  GraduationCap,
+  Book,
+  Library,
+
+  // Svago, Viaggi & Intrattenimento
+  Palmtree,
+  Hotel,
+  Luggage,
+  Tent,
+  Ticket,
+  PartyPopper,
+  Gift,
+  Film,
+  Tv,
+  Music,
+  Camera,
+  Gamepad2,
+  Headphones,
+  Radio,
+  Palette,
+  Compass,
+
+  // Tecnologia & Dispositivi
+  Laptop,
+  Smartphone,
+  Phone,
+  Monitor,
+  Cloud,
+  Package,
+
+  // Finanza, Lavoro & Amministrazione
+  Briefcase,
+  Landmark,
+  Banknote,
+  Coins,
+  CreditCard,
+  Wallet,
   PiggyBank,
+  BadgePercent,
+  TrendingUp,
+  TrendingDown,
+  Calculator,
+  Receipt,
+  FileText,
+  FileSpreadsheet,
+  Scale,
+  Building,
+  Shield,
+  ShieldCheck,
+  ShieldAlert,
+  Send,
+  ArrowLeftRight,
+
+  // Generali & Simboli
+  Tag,
+  PlusCircle,
   Bookmark,
   Sparkles,
   Repeat,
-  FileText,
-  Laptop,
-  Phone,
-  Shield,
-  Heart,
-  Camera,
-  Music,
-  Film,
-  Book,
   Award,
-  Compass,
   Sun,
-  Key,
-  Lock,
-  Package,
+  Moon,
+  Star,
   Clock,
-  Bus,
-  Bike,
-  Wrench,
-  Pill,
-  BadgePercent
+  CircleHelp
 };
 
 export const AVAILABLE_ICONS = Object.keys(iconMap);
 
 export const AVAILABLE_EMOJIS = [
-  '🛒', '🍕', '☕', '🏠', '⚡', '🚗', '⛽', '✈️', '🚆', '💊',
-  '🏋️', '👶', '🎓', '💼', '💻', '📱', '🎁', '🏖️', '🎬', '📚',
-  '💰', '🏦', '💳', '🛡️', '🩺', '🔧', '🐾', '💈', '🎉', '🌱'
+  // Spesa & Cibo
+  '🛒', '🍎', '🥦', '🥩', '🍕', '🍔', '🍣', '🍝', '☕', '🥐', '🍦', '🍰', '🍺', '🍷', '🥂',
+  // Casa & Utenze
+  '🏠', '🛋️', '⚡', '💧', '🔥', '📶', '🧹', '🪴', '🔨', '🪛', '💡', '📦',
+  // Trasporti
+  '🚗', '⛽', '🛵', '🚲', '🚆', '✈️', '🚌', '🚢', '🅿️', '🧰',
+  // Salute & Fitness
+  '💊', '🩺', '🏥', '🏋️', '🧘', '🦷', '👓', '💈', '🧴',
+  // Famiglia & Animali
+  '👶', '🎓', '📚', '🎒', '🐾', '🐶', '🐱', '🍼', '🧸',
+  // Svago & Regali
+  '🎁', '🎉', '🏖️', '✈️', '🏨', '🎬', '🎮', '🎧', '🎟️', '⛺', '📸', '🎨',
+  // Lavoro, Tecnologia & Finanza
+  '💼', '💻', '📱', '💰', '🏦', '💳', '🪙', '📊', '📈', '📉', '🧾', '🛡️', '⚖️'
 ];
 
 // Funzione per rilevare se una stringa è un emoji
@@ -158,67 +324,75 @@ export const CategoryIcon: React.FC<CategoryIconProps> = ({
   color,
   size = 20,
   className = '',
-  background = true,
+  background = false,
   tipo,
   isGiroconto = false
 }) => {
-  // Determinazione icona e colore in base alle specifiche
-  const isTransfer = isGiroconto || tipo === 'GIROCONTO' || name === 'GIROCONTO';
-  
-  // Se è specificato il colore esplicito, diamo priorità ad esso (es. rosso scuro per essenziali, arancione per extra)
-  const resolvedColor = isTransfer 
-    ? (color || TYPE_ICON_COLORS.GIROCONTO)
-    : (color || (tipo ? TYPE_ICON_COLORS[tipo] : '#4f46e5'));
+  // Determinazione del colore
+  let resolvedColor = color;
+  if (!resolvedColor && tipo) {
+    resolvedColor = isGiroconto ? TYPE_ICON_COLORS.GIROCONTO : TYPE_ICON_COLORS[tipo];
+  }
+  if (!resolvedColor) {
+    resolvedColor = '#E31B23';
+  }
 
-  // Icona unificata per tutti i giroconti
-  const resolvedName = isTransfer ? 'ArrowLeftRight' : name;
-
-  const containerSize = Math.max(size * 1.9, 36);
-
-  // Se è un emoji
-  if (isEmoji(resolvedName)) {
-    if (!background) {
+  // 1. Caso Emoji
+  if (isEmoji(name)) {
+    if (background) {
       return (
-        <span 
-          className={`inline-flex items-center justify-center select-none ${className}`}
-          style={{ fontSize: `${size}px` }}
+        <div
+          className={`flex items-center justify-center rounded-[12px] shrink-0 ${className}`}
+          style={{
+            width: size + 16,
+            height: size + 16,
+            backgroundColor: `${resolvedColor}18`,
+            border: `1px solid ${resolvedColor}30`
+          }}
         >
-          {resolvedName}
-        </span>
+          <span style={{ fontSize: size }}>{name}</span>
+        </div>
       );
     }
     return (
+      <span
+        className={`inline-flex items-center justify-center leading-none select-none shrink-0 ${className}`}
+        style={{ fontSize: size }}
+      >
+        {name}
+      </span>
+    );
+  }
+
+  // 2. Caso Icona Lucide
+  const IconComponent = iconMap[name] || Tag;
+
+  if (background) {
+    return (
       <div
-        className={`inline-flex items-center justify-center rounded-2xl flex-shrink-0 transition-transform active:scale-95 ${className}`}
+        className={`flex items-center justify-center rounded-[12px] shrink-0 ${className}`}
         style={{
+          width: size + 16,
+          height: size + 16,
           backgroundColor: `${resolvedColor}18`,
-          width: `${containerSize}px`,
-          height: `${containerSize}px`
+          border: `1px solid ${resolvedColor}30`
         }}
       >
-        <span style={{ fontSize: `${size * 1.1}px` }} className="leading-none select-none">
-          {resolvedName}
-        </span>
+        <IconComponent
+          size={size}
+          style={{ color: resolvedColor }}
+          strokeWidth={2}
+        />
       </div>
     );
   }
 
-  const IconComponent = iconMap[resolvedName] || Tag;
-
-  if (!background) {
-    return <IconComponent size={size} style={{ color: resolvedColor }} className={className} strokeWidth={2.2} />;
-  }
-
   return (
-    <div
-      className={`inline-flex items-center justify-center rounded-2xl flex-shrink-0 transition-transform active:scale-95 ${className}`}
-      style={{
-        backgroundColor: `${resolvedColor}18`,
-        width: `${containerSize}px`,
-        height: `${containerSize}px`
-      }}
-    >
-      <IconComponent size={size} style={{ color: resolvedColor }} strokeWidth={2.2} />
-    </div>
+    <IconComponent
+      size={size}
+      className={`shrink-0 ${className}`}
+      style={{ color: resolvedColor }}
+      strokeWidth={2}
+    />
   );
 };

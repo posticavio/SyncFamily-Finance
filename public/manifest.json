@@ -4,7 +4,7 @@
   "id": "/",
   "start_url": "/",
   "scope": "/",
-  "description": "Applicazione per la gestione delle finanze familiari con database sincronizzato, budget e proiezioni.",
+  "description": "Applicazione avanzata per la gestione delle finanze familiari con database sincronizzato, budget e proiezioni.",
   "background_color": "#121212",
   "theme_color": "#121212",
   "display": "standalone",
@@ -53,6 +53,18 @@
           "sizes": "192x192",
           "type": "image/png",
           "purpose": "any"
+        },
+        {
+          "src": "/quick-add-icon-512.png",
+          "sizes": "512x512",
+          "type": "image/png",
+          "purpose": "any"
+        },
+        {
+          "src": "/quick-add-icon.svg",
+          "sizes": "512x512",
+          "type": "image/svg+xml",
+          "purpose": "any"
         }
       ]
     },
@@ -67,6 +79,18 @@
           "sizes": "192x192",
           "type": "image/png",
           "purpose": "any"
+        },
+        {
+          "src": "/scan-icon-512.png",
+          "sizes": "512x512",
+          "type": "image/png",
+          "purpose": "any"
+        },
+        {
+          "src": "/scan-icon.svg",
+          "sizes": "512x512",
+          "type": "image/svg+xml",
+          "purpose": "any"
         }
       ]
     },
@@ -77,9 +101,47 @@
       "url": "/?action=what-if",
       "icons": [
         {
-          "src": "/icon-192.png",
+          "src": "/whatif-icon.png",
           "sizes": "192x192",
           "type": "image/png",
+          "purpose": "any"
+        },
+        {
+          "src": "/whatif-icon-512.png",
+          "sizes": "512x512",
+          "type": "image/png",
+          "purpose": "any"
+        },
+        {
+          "src": "/whatif-icon.svg",
+          "sizes": "512x512",
+          "type": "image/svg+xml",
+          "purpose": "any"
+        }
+      ]
+    },
+    {
+      "name": "Patrimonio & Conti",
+      "short_name": "Conti",
+      "description": "Visualizza saldi, banche e fondi",
+      "url": "/?action=conti",
+      "icons": [
+        {
+          "src": "/conti-icon.png",
+          "sizes": "192x192",
+          "type": "image/png",
+          "purpose": "any"
+        },
+        {
+          "src": "/conti-icon-512.png",
+          "sizes": "512x512",
+          "type": "image/png",
+          "purpose": "any"
+        },
+        {
+          "src": "/conti-icon.svg",
+          "sizes": "512x512",
+          "type": "image/svg+xml",
           "purpose": "any"
         }
       ]

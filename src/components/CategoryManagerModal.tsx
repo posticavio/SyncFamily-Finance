@@ -28,6 +28,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
   const [colore, setColore] = useState('#E31B23');
   const [iconMode, setIconMode] = useState<'EMOJI' | 'ICONS'>('EMOJI');
   const [filterTipo, setFilterTipo] = useState<'ALL' | 'USCITA' | 'ENTRATA'>('ALL');
+  const [iconSearch, setIconSearch] = useState('');
   const [message, setMessage] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -374,17 +375,28 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
                       onClick={() => setIconMode('EMOJI')}
                       className={`px-3 py-1 rounded-md transition-all ${iconMode === 'EMOJI' ? 'bg-white dark:bg-slate-700 shadow-xs text-slate-900 dark:text-slate-100' : 'text-slate-500'}`}
                     >
-                      Emoji
+                      Emoji ({AVAILABLE_EMOJIS.length})
                     </button>
                     <button
                       type="button"
                       onClick={() => setIconMode('ICONS')}
                       className={`px-3 py-1 rounded-md transition-all ${iconMode === 'ICONS' ? 'bg-white dark:bg-slate-700 shadow-xs text-slate-900 dark:text-slate-100' : 'text-slate-500'}`}
                     >
-                      Icone Lucide
+                      Icone Lucide ({AVAILABLE_ICONS.length})
                     </button>
                   </div>
                 </div>
+
+                {/* Quick Search for Icons */}
+                {iconMode === 'ICONS' && (
+                  <input
+                    type="text"
+                    value={iconSearch}
+                    onChange={e => setIconSearch(e.target.value)}
+                    placeholder="Cerca icona (es. Car, Pizza, Home, Dog, Bank, Music)..."
+                    className="w-full px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 outline-none text-slate-900 dark:text-slate-100"
+                  />
+                )}
 
                 {iconMode === 'EMOJI' ? (
                   <div className="grid grid-cols-6 sm:grid-cols-10 gap-1.5 p-2 bg-slate-50 dark:bg-slate-850 rounded-2xl max-h-48 overflow-y-auto no-scrollbar border border-slate-200/80 dark:border-slate-750">
@@ -405,7 +417,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
                   </div>
                 ) : (
                   <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5 p-2 bg-slate-50 dark:bg-slate-850 rounded-2xl max-h-48 overflow-y-auto no-scrollbar border border-slate-200/80 dark:border-slate-750">
-                    {AVAILABLE_ICONS.map(ic => (
+                    {AVAILABLE_ICONS.filter(ic => !iconSearch.trim() || ic.toLowerCase().includes(iconSearch.toLowerCase().trim())).map(ic => (
                       <button
                         type="button"
                         key={ic}

@@ -365,6 +365,44 @@ export const TransactionListView: React.FC<TransactionListViewProps> = ({
   // Ordinamento
   const sortedMovements = useMemo(() => {
     return [...processedMovements].sort((a, b) => {
+      // Regola speciale e prioritaria per le transazioni future (filtro "FUTURE" o entrambe con data futura rispetto a oggi)
+      const now = new Date();
+      const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      const isFutureA = parseComparableDate(a.data) > todayMidnight;
+      const isFutureB = parseComparableDate(b.data) > todayMidnight;
+
+      if (selectedPeriod === 'FUTURE' || (isFutureA && isFutureB)) {
+        // 1. Data: la più recente/prima (cronologico crescente: la data più vicina a oggi viene prima)
+        const timeA = parseComparableDate(a.data);
+        const timeB = parseComparableDate(b.data);
+        if (timeA !== timeB) {
+          return timeA - timeB; // Ascending: Jan 2027 comes before June 2027
+        }
+
+        // 2. Tipologia: prima i guadagni (ENTRATA), poi il resto (USCITA, GIROCONTO)
+        const typeOrder = (type: string) => {
+          if (type === 'ENTRATA') return 1;
+          if (type === 'USCITA') return 2;
+          return 3;
+        };
+        const orderA = typeOrder(a.tipologia);
+        const orderB = typeOrder(b.tipologia);
+        if (orderA !== orderB) {
+          return orderA - orderB;
+        }
+
+        // 3. Importo: decrescente (dal più grande al più piccolo)
+        if (b.importo !== a.importo) {
+          return b.importo - a.importo;
+        }
+
+        // Fallback su ordine di creazione
+        const createA = new Date(a.created_at || a.data || '').getTime() || 0;
+        const createB = new Date(b.created_at || b.data || '').getTime() || 0;
+        if (createB !== createA) return createB - createA;
+        return (b.movimento_id || '').localeCompare(a.movimento_id || '');
+      }
+
       if (sortBy === 'DATE_DESC') {
         const timeA = parseComparableDate(a.data);
         const timeB = parseComparableDate(b.data);
@@ -395,7 +433,7 @@ export const TransactionListView: React.FC<TransactionListViewProps> = ({
       }
       return 0;
     });
-  }, [processedMovements, sortBy]);
+  }, [processedMovements, sortBy, selectedPeriod]);
 
   // Calcolo Gruppi in stile Google Sheets Views
   const groups = useMemo<GroupData[]>(() => {
