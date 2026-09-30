@@ -27,7 +27,8 @@ import {
   CheckCircle2,
   ShieldCheck,
   TrendingUp,
-  Banknote
+  Banknote,
+  Repeat
 } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { TabHeaderInfo } from './TabHeaderInfo';
@@ -48,6 +49,7 @@ interface SettingsViewProps {
   onOpenAccounts: () => void;
   onOpenBackup: () => void;
   onOpenControlCenter: () => void;
+  onOpenRecurrences?: () => void;
 }
 
 const COLOR_PALETTE = [
@@ -70,7 +72,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onRefresh,
   onOpenAccounts,
   onOpenBackup,
-  onOpenControlCenter
+  onOpenControlCenter,
+  onOpenRecurrences
 }) => {
   const [filterTipo, setFilterTipo] = useState<'ALL' | 'USCITA' | 'ENTRATA' | 'ESSENZIALI' | 'EXTRA' | 'GUADAGNI'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -327,7 +330,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </div>
 
       {/* Quick Access System Tiles */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        {onOpenRecurrences && (
+          <button
+            onClick={onOpenRecurrences}
+            className="p-4 rounded-[22px] bg-white dark:bg-[#1C1C1E] border border-slate-200/80 dark:border-slate-800/80 hover:border-[#E31B23]/50 transition-all text-left flex flex-col justify-between shadow-xs active:scale-95 group"
+          >
+            <div className="w-10 h-10 rounded-2xl bg-red-50 dark:bg-red-950/60 text-[#E31B23] flex items-center justify-center mb-2">
+              <Repeat size={20} />
+            </div>
+            <div>
+              <span className="text-xs font-bold text-slate-900 dark:text-white block group-hover:text-[#E31B23] transition-colors">
+                Ricorrenze & Rate
+              </span>
+              <span className="text-[11px] text-slate-400">Spese periodiche</span>
+            </div>
+          </button>
+        )}
+
         <button
           onClick={onOpenAccounts}
           className="p-4 rounded-[22px] bg-white dark:bg-[#1C1C1E] border border-slate-200/80 dark:border-slate-800/80 hover:border-slate-300 dark:hover:border-slate-700 transition-all text-left flex flex-col justify-between shadow-xs active:scale-95 group"

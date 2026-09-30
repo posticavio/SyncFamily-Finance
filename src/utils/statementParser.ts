@@ -555,14 +555,155 @@ export function parseMultilineTextStatement(text: string): StatementParseResult 
 }
 
 /**
- * Parser Universale per Estratto Conto Bancario
- * Supporta:
- * - Testo incollato da tabella bancaria (copia/incolla da Intesa, UniCredit, Poste, BBVA, Revolut, ecc.)
- * - File CSV / TSV / TXT
- * - Riconoscimento colonne Intelligente:
- *   - Data (Data Contabile, Data Valuta, Data Operazione)
- *   - Descrizione / Causale / Dettaglio
- *   - Importo Singolo (con segno o Dare/Avere separati)
+ * Parser specializzato per estratti conto di Carte di Credito e Linee di Credito da PDF
+ * (Findomestic, Nexi, CartaBCC, Amex, Compass, Agos, Deutsche Bank, Intesa Carta, UniCredit Flexia, ecc.)
+ */
+export function parseCreditCardPdfStatement(text: string): StatementParseResult | null {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+  if (lines.length < 2) return null;
+
+  const rows: ParsedStatementRow[] = [];
+  let totalInflow = 0;
+  let totalOutflow = 0;
+
+  // Pattern per catturare righe con 1 o 2 date all'inizio
+  const doubleDateRegex = /^(\d{2}[./-]\d{2}[./-]\d{4})\s+(\d{2}[./-]\d{2}[./-]\d{4})?\s+(.*)$/;
+  const singleDateRegex = /^(\d{2}[./-]\d{2}[./-]\d{4})\s+(.*)$/;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lowerLine = line.toLowerCase();
+
+    // Salta righe di intestazione/riepilogo o note legali del PDF
+    if (lowerLine.includes('estratto conto della linea') ||
+        lowerLine.includes('periodo di riferimento') ||
+        lowerLine.includes('la tua linea di credito') ||
+        lowerLine.includes('saldo complessivo') ||
+        lowerLine.includes('disponibilità residua') ||
+        lowerLine.includes('totale rimborso del mese') ||
+        lowerLine.includes('riepilogo utilizzi') ||
+        lowerLine.includes('riepilogo rimborsi') ||
+        lowerLine.includes('riepilogo saldi') ||
+        lowerLine.includes('dettagli dei saldi') ||
+        lowerLine.includes('guida all\'estratto conto') ||
+        lowerLine.includes('blocco degli strumenti') ||
+        lowerLine.includes('codice cliente') ||
+        lowerLine.includes('numero conto') ||
+        lowerLine.includes('data utilizzo data contabile') ||
+        lowerLine.includes('data operazione importo') ||
+        lowerLine.includes('modalità rimborso') ||
+        lowerLine.includes('il tuo centro clienti') ||
+        lowerLine.includes('per richieste ed informazioni') ||
+        lowerLine.includes('tan taeg') ||
+        lowerLine.startsWith('pag.') ||
+        lowerLine.startsWith('pagina ')) {
+      continue;
+    }
+
+    let rawDate = '';
+    let isoDate = '';
+    let restOfLine = '';
+
+    const doubleMatch = line.match(doubleDateRegex);
+    if (doubleMatch) {
+      rawDate = doubleMatch[1];
+      isoDate = normalizeDateToISO(rawDate) || '';
+      restOfLine = doubleMatch[3] || '';
+    } else {
+      const singleMatch = line.match(singleDateRegex);
+      if (singleMatch) {
+        rawDate = singleMatch[1];
+        isoDate = normalizeDateToISO(rawDate) || '';
+        restOfLine = singleMatch[2] || '';
+      }
+    }
+
+    if (!isoDate || !restOfLine) continue;
+
+    // Tokenizza restOfLine per estrarre l'importo e la descrizione
+    const tokens = restOfLine.split(/\s+/);
+    let amountIdx = -1;
+    let foundAmountStr = '';
+
+    // Cerca dal fondo della riga l'ultimo token che rappresenta un importo numerico valido
+    for (let t = tokens.length - 1; t >= 0; t--) {
+      const tok = tokens[t];
+      if (/^[-+]?\d{1,3}(?:\.\d{3})*(?:,\d{2})$/.test(tok) || /^[-+]?\d+(?:[.,]\d{2})$/.test(tok)) {
+        amountIdx = t;
+        foundAmountStr = tok;
+        break;
+      }
+    }
+
+    if (amountIdx !== -1) {
+      let descTokens = tokens.slice(0, amountIdx);
+      let desc = descTokens.join(' ').trim();
+
+      // Se la descrizione è vuota (es. riga senza testo del merchant)
+      if (!desc || /^\d+$/.test(desc)) {
+        desc = 'Operazione Carta di Credito';
+      }
+
+      const lowerDesc = desc.toLowerCase();
+      const isCancellation = lowerDesc.includes('annullamento') || 
+                             lowerDesc.includes('storno') || 
+                             lowerDesc.includes('rimborso') || 
+                             lowerDesc.includes('reso') ||
+                             lowerDesc.includes('accredito');
+
+      const parsedAmt = parseAmountAndType(foundAmountStr);
+      let amount = parsedAmt.amount;
+      let type: MovementType = 'USCITA';
+
+      // Nel caso delle carte di credito, l'annullamento o importo negativo rappresenta un accredito/rimborso
+      if (foundAmountStr.includes('-') || isCancellation) {
+        type = 'ENTRATA';
+      } else {
+        type = 'USCITA';
+      }
+
+      if (amount > 0) {
+        if (type === 'ENTRATA') totalInflow += amount;
+        else totalOutflow += amount;
+
+        rows.push({
+          id: `cc-pdf-${rows.length}-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+          rawDate,
+          date: isoDate,
+          description: desc,
+          amount,
+          type,
+          rawAmount: foundAmountStr,
+          originalValues: {
+            date: rawDate,
+            description: desc,
+            amount: foundAmountStr,
+            fullLine: line
+          }
+        });
+      }
+    }
+  }
+
+  if (rows.length === 0) return null;
+
+  rows.sort((a, b) => a.date.localeCompare(b.date));
+
+  return {
+    rows,
+    detectedDelimiter: 'CREDIT_CARD_PDF_PARSER',
+    detectedHeaders: ['Data Utilizzo', 'Descrizione Operazione', 'Importo (€)'],
+    totalInflow: Math.round(totalInflow * 100) / 100,
+    totalOutflow: Math.round(totalOutflow * 100) / 100,
+    startDate: rows[0]?.date,
+    endDate: rows[rows.length - 1]?.date,
+    rawRowCount: rows.length,
+    errors: []
+  };
+}
+
+/**
+ * Parser Universale per Estratto Conto Bancario e Carte di Credito
  */
 export function parseBankStatement(rawText: string, customOptions?: {
   delimiter?: string;
@@ -583,6 +724,12 @@ export function parseBankStatement(rawText: string, customOptions?: {
       rawRowCount: 0,
       errors: ['Nessun testo o file fornito.']
     };
+  }
+
+  // Controllo speciale per estratti conto Carte di Credito PDF (Findomestic, Nexi, CartaBCC, Amex, Compass, Agos, ecc.)
+  const ccPdfResult = parseCreditCardPdfStatement(cleanText);
+  if (ccPdfResult && ccPdfResult.rows.length > 0) {
+    return ccPdfResult;
   }
 
   // Controllo speciale per PDF incollato (es. MPS con righe multiline)
@@ -626,13 +773,14 @@ export function parseBankStatement(rawText: string, customOptions?: {
   let debitColIdx = customOptions?.debitColIndex ?? -1; // Uscite / Dare
   let creditColIdx = customOptions?.creditColIndex ?? -1; // Entrate / Avere
 
-  // Parole chiave comuni negli estratti conto italiani ed europei
-  const dateKeywords = ['data contabile', 'data valuta', 'data operazione', 'data', 'date', 'giorno'];
-  const descKeywords = ['descrizione operazione', 'descrizione', 'dettaglio', 'operazione', 'beneficiario', 'disposizione', 'memo', 'description'];
-  const causaleKeywords = ['causale', 'cautela'];
-  const amountKeywords = ['importo', 'amount', 'valore', 'totale'];
-  const debitKeywords = ['dare', 'uscite', 'addebiti', 'spese', 'debit', 'outflow'];
-  const creditKeywords = ['avere', 'entrate', 'accrediti', 'incassi', 'credit', 'inflow'];
+  // Parole chiave comuni negli estratti conto italiani ed europei (bancari e carte di credito)
+  const dateKeywords = ['data contabile', 'data valuta', 'data operazione', 'data registrazione', 'data addebito', 'data spesa', 'data', 'date', 'giorno'];
+  const descKeywords = ['descrizione operazione', 'descrizione', 'esercente', 'merchant', 'dettaglio', 'operazione', 'beneficiario', 'disposizione', 'memo', 'description', 'esercizio', 'causale'];
+  const causaleKeywords = ['causale', 'cautela', 'esercente / descrizione', 'esercente', 'merchant'];
+  const locationKeywords = ['località', 'localita', 'città', 'citta', 'luogo', 'paese'];
+  const amountKeywords = ['importo (€)', 'importo euro', 'importo in euro', 'importo', 'amount', 'valore', 'totale', 'addebito (€)', 'addebito'];
+  const debitKeywords = ['dare', 'uscite', 'addebiti', 'spese', 'debit', 'outflow', 'addebito'];
+  const creditKeywords = ['avere', 'entrate', 'accrediti', 'incassi', 'credit', 'inflow', 'accredito'];
 
   // Cerca riga di intestazione nelle prime 10 righe
   for (let r = 0; r < Math.min(parsedGrid.length, 10); r++) {
@@ -919,4 +1067,24 @@ export function getDemoBankStatement(): string {
 04/${m}/${y};05/${m}/${y};CONTABILIZZATO;PAGAMENTO POS AMAZON IT MARKETPLACE;-36,40
 02/${m}/${y};03/${m}/${y};CONTABILIZZATO;PAGAMENTO POS LEROY MERLIN BRICOLAGE;-92,50
 01/${m}/${y};01/${m}/${y};CONTABILIZZATO;BONIFICO DISPOSTO QUOTA CONDOMINIALE;-120,00`;
+}
+
+/**
+ * Fornisce un estratto conto demo di Carta di Credito (Nexi / Visa / Mastercard / Amex)
+ */
+export function getDemoCreditCardStatement(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+
+  return `Data Operazione;Data Registrazione;Esercente / Descrizione;Località;N. Carta;Stato;Importo (€)
+15/${m}/${y};16/${m}/${y};PAGAMENTO CARTA APPLE.COM/BILL;HOOFDDORP;*4829;CONTABILIZZATO;-12,99
+14/${m}/${y};15/${m}/${y};SUPERMERCATO ESSELUNGA;MILANO;*4829;CONTABILIZZATO;-68,40
+14/${m}/${y};;ZARA BOUTIQUE ABBIGLIAMENTO;ROMA;*4829;IN AUTORIZZAZIONE (NON CONTABILIZZATO);-49,90
+12/${m}/${y};13/${m}/${y};RISTORANTE IL TRITONE;FIRENZE;*4829;CONTABILIZZATO;-85,00
+10/${m}/${y};11/${m}/${y};DISTRIBUTORE ENI STATION;BOLOGNA;*4829;CONTABILIZZATO;-50,00
+08/${m}/${y};09/${m}/${y};AMAZON.IT MARKETPLACE;LUXEMBOURG;*4829;CONTABILIZZATO;-34,50
+05/${m}/${y};06/${m}/${y};HOTEL PARCO DEI PRINCIPI;NAPOLI;*4829;CONTABILIZZATO;-220,00
+02/${m}/${y};03/${m}/${y};FARMACIA SANTA LUCIANA;MILANO;*4829;CONTABILIZZATO;-24,80
+01/${m}/${y};02/${m}/${y};STORNO RESO ZARA;ROMA;*4829;CONTABILIZZATO;+49,90`;
 }

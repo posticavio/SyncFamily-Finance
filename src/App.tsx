@@ -34,9 +34,12 @@ import { SpotlightSearchModal } from './components/SpotlightSearchModal';
 import { ReceiptScannerModal } from './components/ReceiptScannerModal';
 import { PurchaseImpactModal } from './components/PurchaseImpactModal';
 import { MonthlySummaryExportModal } from './components/MonthlySummaryExportModal';
+import { AccountBalanceCorrectionModal } from './components/AccountBalanceCorrectionModal';
+import { RecurrencesView } from './components/RecurrencesView';
+import { AIChatModal } from './components/AIChatModal';
 import { motion, AnimatePresence } from 'motion/react';
 
-import { Plus, FolderKanban } from 'lucide-react';
+import { Plus, FolderKanban, Sparkles } from 'lucide-react';
 import { formatCurrency } from './utils/formatters';
 import { haptics } from './utils/haptics';
 import { 
@@ -46,7 +49,7 @@ import {
 } from './utils/financialDate';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'ANALISI' | 'TRANSAZIONI' | 'REPORT_AI' | 'CALENDARIO' | 'BUDGET' | 'PROGETTI' | 'NOTE' | 'IMPOSTAZIONI' | 'CONTI'>('DASHBOARD');
+  const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'ANALISI' | 'TRANSAZIONI' | 'RICORRENZE' | 'REPORT_AI' | 'CALENDARIO' | 'BUDGET' | 'PROGETTI' | 'NOTE' | 'IMPOSTAZIONI' | 'CONTI'>('DASHBOARD');
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   // Data States
@@ -110,8 +113,11 @@ export default function App() {
   const [isReconciliationOpen, setIsReconciliationOpen] = useState(false);
   const [isSpotlightOpen, setIsSpotlightOpen] = useState(false);
   const [isReceiptScannerOpen, setIsReceiptScannerOpen] = useState(false);
+  const [isAIChatOpen, setIsAIChatOpen] = useState(false);
   const [isPurchaseImpactOpen, setIsPurchaseImpactOpen] = useState(false);
   const [isExportSummaryOpen, setIsExportSummaryOpen] = useState(false);
+  const [isBalanceCorrectionOpen, setIsBalanceCorrectionOpen] = useState(false);
+  const [balanceCorrectionAccountId, setBalanceCorrectionAccountId] = useState<string | undefined>(undefined);
   const [reconciliationAccountId, setReconciliationAccountId] = useState<string | undefined>(undefined);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | undefined>(undefined);
   const [selectedTagFilter, setSelectedTagFilter] = useState<string | null>(null);
@@ -151,6 +157,11 @@ export default function App() {
   const handleOpenReconciliation = (accountId?: string) => {
     setReconciliationAccountId(accountId);
     setIsReconciliationOpen(true);
+  };
+
+  const handleOpenBalanceCorrection = (accountId?: string) => {
+    setBalanceCorrectionAccountId(accountId);
+    setIsBalanceCorrectionOpen(true);
   };
 
   const handleNavigateToCalendar = (dateStr?: string) => {
@@ -374,7 +385,11 @@ export default function App() {
           break;
         case 'r':
           e.preventDefault();
-          setActiveTab('REPORT_AI');
+          if (activeTab === 'RICORRENZE') {
+            setActiveTab('REPORT_AI');
+          } else {
+            setActiveTab('RICORRENZE');
+          }
           break;
         case 'p':
           e.preventDefault();
@@ -527,14 +542,16 @@ export default function App() {
         onOpenCategories={() => setActiveTab('IMPOSTAZIONI')}
         onOpenBackup={() => setIsBackupOpen(true)}
         onOpenReconciliation={() => handleOpenReconciliation()}
+        onOpenBalanceCorrection={() => handleOpenBalanceCorrection()}
         onOpenSpotlight={() => setIsSpotlightOpen(true)}
         onOpenReceiptScanner={() => setIsReceiptScannerOpen(true)}
         onOpenPurchaseImpact={() => setIsPurchaseImpactOpen(true)}
         onOpenExportSummary={() => setIsExportSummaryOpen(true)}
+        onOpenAIChat={() => setIsAIChatOpen(true)}
       />
 
-      {/* Container fluido principale per i contenuti - Perfettamente allineato all'Header (max-w-7xl px-4 sm:px-6) */}
-      <main className="w-full max-w-7xl mx-auto px-2.5 sm:px-6 pt-0 sm:pt-1 pb-20 sm:pb-10 max-w-[100vw] overflow-x-hidden">
+      {/* Container fluido principale per i contenuti - Perfettamente allineato all'Header (max-w-7xl px-4 md:px-8) */}
+      <main className="w-full max-w-7xl mx-auto px-4 md:px-8 pt-0 sm:pt-1 pb-20 sm:pb-10 max-w-[100vw] overflow-x-hidden">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={activeTab}
@@ -660,6 +677,18 @@ export default function App() {
               />
             )}
 
+            {/* Tab: RICORRENZE & RATE (Schermata dedicata sottocategorie con ricorrenza) */}
+            {activeTab === 'RICORRENZE' && (
+              <RecurrencesView
+                subcategories={subcategories}
+                accounts={rawAccounts}
+                funds={rawFunds}
+                onNavigateToCalendar={() => setActiveTab('CALENDARIO')}
+                onNavigateToTransactions={() => setActiveTab('TRANSAZIONI')}
+                onRefresh={refreshAll}
+              />
+            )}
+
             {/* Tab 5: PROGETTI & FINANZIAMENTI */}
             {activeTab === 'PROGETTI' && (
               <ProjectsView
@@ -711,6 +740,7 @@ export default function App() {
                 onOpenAccounts={() => setActiveTab('CONTI')}
                 onOpenBackup={() => setIsBackupOpen(true)}
                 onOpenControlCenter={() => setIsControlOpen(true)}
+                onOpenRecurrences={() => setActiveTab('RICORRENZE')}
               />
             )}
 
@@ -758,6 +788,7 @@ export default function App() {
                     setIsNewTxOpen(true);
                   }}
                   onOpenReconciliation={handleOpenReconciliation}
+                  onOpenBalanceCorrection={handleOpenBalanceCorrection}
                   onSelectAccount={(acc) => setSelectedAccountForDetail(acc)}
                 />
               </div>
@@ -791,6 +822,7 @@ export default function App() {
           funds={forecasts.funds}
           onRefresh={refreshAll}
           onOpenReconciliation={handleOpenReconciliation}
+          onOpenBalanceCorrection={handleOpenBalanceCorrection}
           onSelectAccount={(acc) => setSelectedAccountForDetail(acc)}
           onOpenCreateAccount={() => {
             setIsAccountsOpen(false);
@@ -813,6 +845,7 @@ export default function App() {
           onSelectMovement={handleOpenEdit}
           onOpenNewTransactionForAccount={handleOpenNewTransactionForAccount}
           onOpenReconciliation={handleOpenReconciliation}
+          onOpenBalanceCorrection={handleOpenBalanceCorrection}
           onEditAccount={() => setIsAccountsOpen(true)}
         />
       )}
@@ -825,6 +858,22 @@ export default function App() {
           alerts={alerts}
           onRefresh={refreshAll}
           onOpenReconciliation={handleOpenReconciliation}
+          onOpenBalanceCorrection={handleOpenBalanceCorrection}
+        />
+      )}
+
+      {/* Modale Correzione Saldo Conti / Fondi (Rettifica Automatica) */}
+      {isBalanceCorrectionOpen && (
+        <AccountBalanceCorrectionModal
+          isOpen={isBalanceCorrectionOpen}
+          onClose={() => {
+            setIsBalanceCorrectionOpen(false);
+            setBalanceCorrectionAccountId(undefined);
+          }}
+          accounts={rawAccounts}
+          funds={rawFunds}
+          initialAccountId={balanceCorrectionAccountId}
+          onSuccess={refreshAll}
         />
       )}
 
@@ -953,6 +1002,32 @@ export default function App() {
         accounts={rawAccounts}
         funds={rawFunds}
       />
+
+      {/* Assistente Finanziario Gemini AI Modal */}
+      <AIChatModal
+        isOpen={isAIChatOpen}
+        onClose={() => setIsAIChatOpen(false)}
+        movements={movements}
+        accounts={rawAccounts}
+        subcategories={subcategories}
+      />
+
+      {/* Floating Action Button Gemini AI (sempre accessibile su desktop e mobile in basso a destra) */}
+      <button
+        id="floating-gemini-ai-fab"
+        onClick={() => {
+          haptics.tap();
+          setIsAIChatOpen(true);
+        }}
+        className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-40 h-11 sm:h-12 px-3.5 sm:px-4 rounded-full bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:opacity-95 text-white font-bold text-xs sm:text-sm shadow-xl flex items-center gap-2 transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer border border-white/20 group"
+        title="Apri Assistente AI Gemini"
+      >
+        <div className="relative flex items-center justify-center">
+          <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-white animate-pulse" />
+          <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-yellow-300 ring-1 ring-white" />
+        </div>
+        <span className="font-extrabold tracking-wide">Chiedi a Gemini</span>
+      </button>
 
       {/* Desktop Context Menu */}
       {contextMenu && (

@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { BudgetPerformanceItem, MovementType, Subcategory, getSubcategoryClassification, getSubcategoryNecessity } from '../types';
+import { BudgetPerformanceItem, MovementType, Subcategory, getSubcategoryClassification, getSubcategoryNecessity, Movement, Planned } from '../types';
 import { BudgetService } from '../services/BudgetService';
 import { CategoryService } from '../services/CategoryService';
+import { MovementService } from '../services/MovementService';
+import { PlannedService } from '../services/PlannedService';
 import { formatCurrency, getMonthName } from '../utils/formatters';
 import { CategoryIcon } from './CategoryIcon';
 import { TabHeaderInfo } from './TabHeaderInfo';
@@ -34,7 +36,11 @@ import {
   PiggyBank,
   Sparkles,
   Calculator,
-  ArrowUpRight
+  ArrowUpRight,
+  Zap,
+  Clock,
+  FileText,
+  Search
 } from 'lucide-react';
 
 interface CategoryGroup {
@@ -90,14 +96,63 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ onNavigateToTransactions
   const [editBudgetAmount, setEditBudgetAmount] = useState<string>('');
   const [cloneStatus, setCloneStatus] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+  const [selectedDetailCategory, setSelectedDetailCategory] = useState<CategoryGroup | null>(null);
+  const [subcategorySearch, setSubcategorySearch] = useState<string>('');
+
+  // Stati per la visualizzazione dei movimenti integrati nel modal di dettaglio
+  const [selectedSubIdMovements, setSelectedSubIdMovements] = useState<string | null>(null);
+  const [selectedSubNameMovements, setSelectedSubNameMovements] = useState<string | null>(null);
+  const [subMovements, setSubMovements] = useState<Movement[]>([]);
+  const [subPlanned, setSubPlanned] = useState<Planned[]>([]);
+  const [isLoadingMovements, setIsLoadingMovements] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!selectedSubIdMovements) {
+      setSubMovements([]);
+      setSubPlanned([]);
+      return;
+    }
+
+    const fetchMovements = async () => {
+      setIsLoadingMovements(true);
+      try {
+        const period = getFinancialPeriodInfo(selectedMonth);
+        
+        // 1. Carica movimenti reali
+        const reals = await MovementService.getAll({
+          startDate: period.startDate,
+          endDate: period.endDate,
+          sottocategoriaId: selectedSubIdMovements
+        });
+
+        // 2. Carica pianificati pendenti
+        const allPlanned = await PlannedService.getAll();
+        const plannedPendings = allPlanned.filter(p => 
+          p.sottocategoria_id === selectedSubIdMovements &&
+          p.stato === 'PENDENTE' &&
+          p.data_prevista >= period.startDate &&
+          p.data_prevista <= period.endDate
+        );
+
+        setSubMovements(reals);
+        setSubPlanned(plannedPendings);
+      } catch (err) {
+        console.error("Errore nel caricamento dei movimenti:", err);
+      } finally {
+        setIsLoadingMovements(false);
+      }
+    };
+
+    fetchMovements();
+  }, [selectedSubIdMovements, selectedMonth]);
 
   // Modale Aggiungi Budget
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [newBudgetSubId, setNewBudgetSubId] = useState<string>('');
   const [newBudgetAmount, setNewBudgetAmount] = useState<string>('');
 
-  // Modalità Vista: Panoramica classica o Analisi Dettagliata & Proiezioni
-  const [viewMode, setViewMode] = useState<'OVERVIEW' | 'DETAILED_ANALYSIS'>('OVERVIEW');
+  // Modalità Vista: Panoramica per Categorie Macro, Tutte le Sottocategorie o Analisi Dettagliata & Proiezioni
+  const [viewMode, setViewMode] = useState<'OVERVIEW' | 'SUBCATEGORIES' | 'DETAILED_ANALYSIS'>('OVERVIEW');
 
   // Modale Simulatore di Risparmio 6 & 12 Mesi
   const [isSimulatorOpen, setIsSimulatorOpen] = useState<boolean>(false);
@@ -125,10 +180,12 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ onNavigateToTransactions
   }, [data.items, activeTab]);
 
   const loadData = async () => {
-    const result = await BudgetService.getDetailedPerformance(selectedMonth);
-    setData(result);
-    const subs = await CategoryService.getAllSubcategories();
+    const [result, subs] = await Promise.all([
+      BudgetService.getDetailedPerformance(selectedMonth),
+      CategoryService.getAllSubcategories()
+    ]);
     setAllSubcategories(subs.filter(s => s.tipo !== 'GIROCONTO' && s.attiva));
+    setData(result);
   };
 
   useEffect(() => {
@@ -171,6 +228,11 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ onNavigateToTransactions
     await loadData();
   };
 
+  const handleAlignBudgetToForecast = async (sottocategoria_id: string, forecastAmount: number) => {
+    await BudgetService.setBudget(selectedMonth, sottocategoria_id, forecastAmount);
+    await loadData();
+  };
+
   const handleCreateNewBudget = async (e: React.FormEvent) => {
     e.preventDefault();
     const parsed = parseFloat(newBudgetAmount.replace(',', '.'));
@@ -200,15 +262,63 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ onNavigateToTransactions
 
   // Raggruppamento per Categoria Padre filtrato rigorosamente per activeTab (USCITA o ENTRATA)
   const categoryGroups = useMemo(() => {
-    const filteredItems = data.items.filter(item => item.tipo === activeTab);
+    // 1. Prendi tutte le sottocategorie del tipo corrente
+    const currentTabSubcategories = allSubcategories.filter(sub => sub.tipo === activeTab);
+
+    // 2. Mappa le performance reali del mese corrente (da data.items) per ID sottocategoria
+    const performanceMap = new Map<string, BudgetPerformanceItem>();
+    data.items.forEach(item => {
+      performanceMap.set(item.sottocategoria_id, item);
+    });
+
+    // 3. Raggruppa per categoria_padre
     const groupsMap = new Map<string, BudgetPerformanceItem[]>();
 
-    filteredItems.forEach(item => {
-      const cat = item.categoria_padre || 'Altro';
-      if (!groupsMap.has(cat)) {
-        groupsMap.set(cat, []);
+    currentTabSubcategories.forEach(sub => {
+      const parentCatName = sub.categoria_padre || 'Altro';
+      
+      if (!groupsMap.has(parentCatName)) {
+        groupsMap.set(parentCatName, []);
       }
-      groupsMap.get(cat)!.push(item);
+
+      // Se esiste una performance registrata in questo mese, usala
+      const existingPerf = performanceMap.get(sub.id);
+      if (existingPerf) {
+        groupsMap.get(parentCatName)!.push(existingPerf);
+      } else {
+        // Altrimenti, crea un elemento con budget e consumi a 0
+        groupsMap.get(parentCatName)!.push({
+          sottocategoria_id: sub.id,
+          sottocategoria_nome: sub.nome,
+          categoria_padre: parentCatName,
+          tipo: sub.tipo,
+          icon_name: sub.icon_name || 'Tag',
+          colore: sub.colore || (activeTab === 'ENTRATA' ? '#10b981' : '#6366f1'),
+          budget: 0,
+          reale: 0,
+          pianificato: 0,
+          previsione: 0,
+          differenza: 0,
+          percentuale: 0,
+          stato: 'OK'
+        });
+      }
+    });
+
+    // Gestisci eventuali transazioni o budget di sottocategorie che non sono più attive o non trovate in allSubcategories
+    data.items.forEach(item => {
+      if (item.tipo === activeTab) {
+        const parentCatName = item.categoria_padre || 'Altro';
+        const group = groupsMap.get(parentCatName);
+        if (group) {
+          const hasItem = group.some(g => g.sottocategoria_id === item.sottocategoria_id);
+          if (!hasItem) {
+            group.push(item);
+          }
+        } else {
+          groupsMap.set(parentCatName, [item]);
+        }
+      }
     });
 
     const groups: CategoryGroup[] = [];
@@ -245,9 +355,67 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ onNavigateToTransactions
       });
     });
 
-    // Ordina prima le categorie con budget o con spesa/incasso maggiore
-    return groups.sort((a, b) => b.budget - a.budget || b.previsione - a.previsione);
-  }, [data.items, activeTab]);
+    // Ordina le categorie da speso/incassato più grande a più piccolo
+    return groups.sort((a, b) => b.reale - a.reale || b.budget - a.budget);
+  }, [data.items, allSubcategories, activeTab]);
+
+  // Lista piatta di tutte le singole sottocategorie del tipo attivo (per la vista elenco completo)
+  const flatSubcategoryItems = useMemo(() => {
+    const currentTabSubcategories = allSubcategories.filter(sub => sub.tipo === activeTab);
+    const performanceMap = new Map<string, BudgetPerformanceItem>();
+    data.items.forEach(item => {
+      if (item.tipo === activeTab) {
+        performanceMap.set(item.sottocategoria_id, item);
+      }
+    });
+
+    const list: BudgetPerformanceItem[] = currentTabSubcategories.map(sub => {
+      const existing = performanceMap.get(sub.id);
+      if (existing) return existing;
+
+      return {
+        sottocategoria_id: sub.id,
+        sottocategoria_nome: sub.nome,
+        categoria_padre: sub.categoria_padre || 'Altro',
+        tipo: sub.tipo,
+        icon_name: sub.icon_name || 'Tag',
+        colore: sub.colore || (activeTab === 'ENTRATA' ? '#10b981' : '#6366f1'),
+        budget: 0,
+        reale: 0,
+        pianificato: 0,
+        previsione: 0,
+        differenza: 0,
+        percentuale: 0,
+        stato: 'OK'
+      };
+    });
+
+    data.items.forEach(item => {
+      if (item.tipo === activeTab && !list.some(l => l.sottocategoria_id === item.sottocategoria_id)) {
+        list.push(item);
+      }
+    });
+
+    let filtered = list;
+    if (subcategorySearch.trim()) {
+      const q = subcategorySearch.toLowerCase().trim();
+      filtered = filtered.filter(i =>
+        i.sottocategoria_nome.toLowerCase().includes(q) ||
+        i.categoria_padre.toLowerCase().includes(q)
+      );
+    }
+
+    return filtered.sort((a, b) => {
+      if (b.budget !== a.budget) return b.budget - a.budget;
+      if (b.reale !== a.reale) return b.reale - a.reale;
+      return a.sottocategoria_nome.localeCompare(b.sottocategoria_nome);
+    });
+  }, [allSubcategories, data.items, activeTab, subcategorySearch]);
+
+  const activeDetailCategory = useMemo(() => {
+    if (!selectedDetailCategory) return null;
+    return categoryGroups.find(c => c.categoryName === selectedDetailCategory.categoryName) || null;
+  }, [categoryGroups, selectedDetailCategory]);
 
   // Avanzamento globale in base alla scheda attiva
   const isExpense = activeTab === 'USCITA';
@@ -446,32 +614,45 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ onNavigateToTransactions
         </div>
       </div>
 
-      {/* View Mode Switcher: Panoramica Categorie vs Analisi Dettagliata & Proiezioni (Nascosto su smartphone view) */}
-      <div className="hidden sm:flex bg-white dark:bg-[#1C1C1E] border border-slate-200/80 dark:border-white/5 rounded-2xl p-2 sm:p-2.5 flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-        <div className="flex bg-slate-100 dark:bg-white/5 p-1 rounded-xl w-full sm:w-auto">
+      {/* View Mode Switcher: Panoramica Categorie, Tutte le Sottocategorie, Analisi Scostamenti & Proiezioni */}
+      <div className="flex bg-white dark:bg-[#1C1C1E] border border-slate-200/80 dark:border-white/5 rounded-2xl p-1.5 sm:p-2.5 flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 shadow-xs">
+        <div className="grid grid-cols-3 sm:flex bg-slate-100 dark:bg-white/5 p-1 rounded-xl w-full sm:w-auto gap-1">
           <button
             onClick={() => setViewMode('OVERVIEW')}
-            className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               viewMode === 'OVERVIEW'
                 ? 'bg-white dark:bg-[#2A2A2E] text-slate-900 dark:text-white shadow-xs'
                 : 'text-slate-600 dark:text-[#8E8E93] hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <LayoutGrid size={15} />
-            <span>Panoramica Categorie</span>
+            <span className="truncate">Categorie</span>
           </button>
+
+          <button
+            onClick={() => setViewMode('SUBCATEGORIES')}
+            className={`flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              viewMode === 'SUBCATEGORIES'
+                ? 'bg-white dark:bg-[#2A2A2E] text-slate-900 dark:text-white shadow-xs'
+                : 'text-slate-600 dark:text-[#8E8E93] hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <ListFilter size={15} />
+            <span className="truncate">Sottocategorie</span>
+          </button>
+
           <button
             onClick={() => setViewMode('DETAILED_ANALYSIS')}
-            className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all relative cursor-pointer ${
+            className={`flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all relative cursor-pointer ${
               viewMode === 'DETAILED_ANALYSIS'
                 ? 'bg-white dark:bg-[#2A2A2E] text-slate-900 dark:text-white shadow-xs'
                 : 'text-slate-600 dark:text-[#8E8E93] hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <Activity size={15} className="text-[#E31B23]" />
-            <span>Analisi Scostamenti & Proiezioni</span>
+            <span className="truncate">Analisi</span>
             {isExpense && alertCategoriesCount > 0 && (
-              <span className="ml-1.5 px-1.5 py-0.2 rounded-full bg-[#E31B23] text-white text-[10px] font-bold">
+              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-[#E31B23] text-white text-[9.5px] font-bold">
                 {alertCategoriesCount}
               </span>
             )}
@@ -488,6 +669,214 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ onNavigateToTransactions
           onOpenNewBudget={() => setIsAddModalOpen(true)}
           onNavigateToTransactions={onNavigateToTransactions}
         />
+      ) : viewMode === 'SUBCATEGORIES' ? (
+        <div className="space-y-4">
+          {/* Barra di ricerca e azione Aggiungi Budget */}
+          <div className="bg-white dark:bg-[#1C1C1E] border border-slate-200/80 dark:border-white/5 rounded-2xl p-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shadow-xs">
+            <div className="relative flex-1">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={subcategorySearch}
+                onChange={e => setSubcategorySearch(e.target.value)}
+                placeholder="Cerca sottocategoria o categoria padre..."
+                className="w-full pl-9 pr-8 py-2 text-xs bg-slate-50 dark:bg-[#2A2A2E] text-slate-900 dark:text-white border border-slate-200 dark:border-white/10 rounded-xl outline-none focus:border-[#E31B23]"
+              />
+              {subcategorySearch && (
+                <button
+                  onClick={() => setSubcategorySearch('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0">
+              <span className="text-xs font-semibold text-slate-500 dark:text-[#8E8E93]">
+                {flatSubcategoryItems.length} sottocategorie
+              </span>
+              <button
+                onClick={() => setIsAddModalOpen(true)}
+                className="px-3.5 py-2 rounded-xl bg-[#E31B23] hover:bg-[#c9171e] text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95"
+              >
+                <Plus size={14} />
+                <span>Nuovo Budget</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Elenco completo Sottocategorie */}
+          {flatSubcategoryItems.length === 0 ? (
+            <div className="bg-white dark:bg-[#1C1C1E] border border-slate-200/80 dark:border-white/5 rounded-2xl p-8 text-center space-y-3">
+              <p className="text-sm text-slate-500 dark:text-[#8E8E93]">
+                {subcategorySearch 
+                  ? `Nessuna sottocategoria trovata per "${subcategorySearch}".`
+                  : `Nessuna sottocategoria per ${isExpense ? 'le uscite' : 'le entrate'}.`}
+              </p>
+              <button
+                onClick={() => setIsAddModalOpen(true)}
+                className="px-4 py-2 rounded-xl bg-[#E31B23] text-white text-xs font-bold inline-flex items-center gap-1.5"
+              >
+                <Plus size={14} />
+                <span>Imposta un budget</span>
+              </button>
+            </div>
+          ) : (
+            <div className="bg-white dark:bg-[#1C1C1E] border border-slate-200/80 dark:border-white/5 rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-white/5 shadow-xs">
+              {flatSubcategoryItems.map(item => {
+                const isEditing = editingSubId === item.sottocategoria_id;
+                const hasSubBudget = item.budget > 0;
+                const isOverSub = isExpense && hasSubBudget && item.differenza < 0;
+                const subStatus = isExpense
+                  ? getSpendStatus(item.percentuale, hasSubBudget, item.differenza < 0)
+                  : getIncomeStatus(item.percentuale, hasSubBudget);
+
+                return (
+                  <div
+                    key={item.sottocategoria_id}
+                    className="p-3.5 sm:p-4 hover:bg-slate-50/60 dark:hover:bg-white/5 transition-colors flex flex-col gap-2.5"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      {/* Dettagli Sottocategoria */}
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="relative w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 bg-slate-100 dark:bg-[#2A2A2E] border border-slate-200/60 dark:border-white/10">
+                          <CategoryIcon name={item.icon_name} color={item.colore} size={18} />
+                          {isOverSub && (
+                            <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-80"></span>
+                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-600 border border-white dark:border-[#1C1C1E]"></span>
+                            </span>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-[#F5F5F7] truncate">
+                              {item.sottocategoria_nome}
+                            </h4>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-[#8E8E93] truncate">
+                              {item.categoria_padre}
+                            </span>
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border ${subStatus.badgeBg} ${subStatus.badgeText} ${subStatus.badgeBorder}`}>
+                              {hasSubBudget ? `${item.percentuale}%` : 'Senza Budget'}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 dark:text-[#8E8E93] font-numeric mt-1">
+                            {isExpense ? (
+                              <>
+                                <span>Speso: <strong className="text-slate-800 dark:text-[#F5F5F7] font-semibold">{formatCurrency(item.reale)}</strong></span>
+                                {item.pianificato > 0 && (
+                                  <>
+                                    <span>•</span>
+                                    <span>In prog: <strong className="text-amber-500 font-semibold">{formatCurrency(item.pianificato)}</strong></span>
+                                  </>
+                                )}
+                                <span>•</span>
+                                <span>Target: <strong className="text-slate-800 dark:text-[#F5F5F7] font-semibold">{hasSubBudget ? formatCurrency(item.budget) : '—'}</strong></span>
+                              </>
+                            ) : (
+                              <>
+                                <span>Incassato: <strong className="text-slate-800 dark:text-[#F5F5F7] font-semibold">{formatCurrency(item.reale)}</strong></span>
+                                {item.pianificato > 0 && (
+                                  <>
+                                    <span>•</span>
+                                    <span>In prog: <strong className="text-emerald-500 font-semibold">{formatCurrency(item.pianificato)}</strong></span>
+                                  </>
+                                )}
+                                <span>•</span>
+                                <span>Target: <strong className="text-slate-800 dark:text-[#F5F5F7] font-semibold">{hasSubBudget ? formatCurrency(item.budget) : '—'}</strong></span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Azioni Modifica Budget / Dettagli */}
+                      <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0">
+                        {isEditing ? (
+                          <div className="flex items-center gap-1.5">
+                            <div className="relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400">€</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={editBudgetAmount}
+                                onChange={e => setEditBudgetAmount(e.target.value)}
+                                placeholder="0"
+                                autoFocus
+                                onFocus={(e) => e.target.select()}
+                                className="w-24 pl-5 pr-2 py-1.5 text-xs font-numeric font-semibold bg-white dark:bg-[#2A2A2E] text-slate-900 dark:text-white border border-[#E31B23] rounded-xl outline-none"
+                              />
+                            </div>
+                            <button
+                              onClick={() => handleSaveBudget(item.sottocategoria_id)}
+                              className="p-1.5 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 transition-colors"
+                              title="Salva"
+                            >
+                              <Check size={14} />
+                            </button>
+                            <button
+                              onClick={() => setEditingSubId(null)}
+                              className="p-1.5 rounded-xl bg-slate-200 dark:bg-white/10 text-slate-600 dark:text-slate-300"
+                              title="Annulla"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => {
+                                setEditingSubId(item.sottocategoria_id);
+                                setEditBudgetAmount(item.budget > 0 ? item.budget.toString() : '');
+                              }}
+                              className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#2A2A2E] dark:hover:bg-white/10 border border-slate-200/80 dark:border-white/10 text-slate-700 dark:text-[#F5F5F7] text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                              title="Modifica Budget"
+                            >
+                              <Edit2 size={12} />
+                              <span>{hasSubBudget ? formatCurrency(item.budget) : 'Imposta'}</span>
+                            </button>
+
+                            {hasSubBudget && (
+                              <button
+                                onClick={() => handleDeleteBudget(item.sottocategoria_id)}
+                                className="p-1.5 rounded-xl text-slate-400 hover:text-rose-500 transition-colors"
+                                title="Rimuovi Budget"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => {
+                                setSelectedSubIdMovements(item.sottocategoria_id);
+                                setSelectedSubNameMovements(item.sottocategoria_nome);
+                              }}
+                              className="p-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-900/40 hover:bg-indigo-100 transition-colors"
+                              title="Vedi movimenti"
+                            >
+                              <ArrowUpRight size={13} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <BudgetProgressBar
+                      reale={item.reale}
+                      pianificato={item.pianificato}
+                      budget={item.budget}
+                      size="sm"
+                      showDetails={false}
+                      isIncome={!isExpense}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       ) : (
         <>
           {/* One UI Squircle Card: Simulazione Risparmio 6 & 12 Mesi (Entrate vs Spese Essenziali) */}
@@ -752,7 +1141,6 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ onNavigateToTransactions
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-3.5 lg:gap-4 items-start">
           {categoryGroups.map(category => {
-            const isExpanded = !!expandedCategories[category.categoryName];
             const hasCatBudget = category.budget > 0;
             const isOverCat = isExpense && hasCatBudget && category.differenza < 0;
             const isNearCat = isExpense && hasCatBudget && category.differenza >= 0 && category.percentuale >= 85 && category.percentuale < 100;
@@ -763,272 +1151,135 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ onNavigateToTransactions
             return (
               <div
                 key={category.categoryName}
-                className={`bg-white dark:bg-[#1C1C1E] border ${
+                onClick={() => setSelectedDetailCategory(category)}
+                className={`bg-white dark:bg-[#222428] border ${
                   isOverCat
-                    ? 'border-rose-500/60 dark:border-rose-500/50 ring-1 ring-rose-500/30 shadow-[0_0_16px_rgba(244,63,94,0.12)]'
+                    ? 'border-rose-500/50 ring-1 ring-rose-500/30 shadow-[0_0_16px_rgba(244,63,94,0.12)]'
                     : isNearCat
-                    ? 'border-orange-400/50 dark:border-orange-500/30'
-                    : 'border-slate-200/80 dark:border-white/5'
-                } rounded-2xl overflow-hidden shadow-xs transition-all flex flex-col`}
+                    ? 'border-orange-500/30'
+                    : 'border-slate-200/80 dark:border-[#2F3136]'
+                } rounded-3xl p-4 cursor-pointer hover:scale-[1.01] hover:brightness-105 active:scale-99 transition-all shadow-sm flex flex-col space-y-3`}
               >
-                {/* Category Header */}
-                <div
-                  onClick={() => toggleCategoryCollapse(category.categoryName)}
-                  className="p-3 sm:p-3.5 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition-colors border-b border-slate-100 dark:border-white/5 space-y-2"
-                >
-                  {/* Top Row: Icon + Name on Left | Residuo + Chevron on Right */}
-                  <div className="flex items-center justify-between gap-2.5">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="relative w-8 h-8 rounded-xl flex items-center justify-center shrink-0 bg-slate-100 dark:bg-white/10">
-                        <CategoryIcon name={category.iconName} color={category.color} size={16} />
-                        {isOverCat && (
-                          <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-80"></span>
-                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-600 border border-white dark:border-[#1C1C1E]"></span>
-                          </span>
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-[#F5F5F7] truncate leading-tight">
-                          {category.categoryName}
-                        </h3>
-                        <span className="text-[10px] sm:text-[11px] text-slate-400 dark:text-[#8E8E93] block leading-tight mt-0.5">
-                          {category.items.length} {category.items.length === 1 ? 'sottocategoria' : 'sottocategorie'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Category Residuo & Chevron Toggle */}
-                    <div className="flex items-center gap-2 shrink-0">
-                      <div className="text-right">
-                        <span className="text-slate-400 dark:text-[#8E8E93] block text-[9px] font-medium leading-none mb-1">
-                          {isExpense ? 'Residuo' : 'Differenza'}
-                        </span>
-                        <span className={`font-numeric tabular-nums text-xs sm:text-sm font-bold leading-none ${
-                          category.differenza >= 0 
-                            ? 'text-emerald-600 dark:text-emerald-400' 
-                            : (isExpense ? 'text-rose-600 dark:text-rose-400 animate-pulse' : 'text-amber-600 dark:text-amber-400')
-                        }`}>
-                          {formatCurrency(category.differenza, { showSign: true })}
-                        </span>
-                      </div>
-
-                      <div className="p-1 rounded-lg bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400 shrink-0">
-                        {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Second Row: Badges & Target Summary */}
-                  <div className="flex items-center justify-between gap-x-2 gap-y-1 text-xs pt-0.5 flex-wrap">
-                    <div className="flex items-center gap-1 flex-wrap shrink-0">
-                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold whitespace-nowrap border ${catStatus.badgeBg} ${catStatus.badgeText} ${catStatus.badgeBorder}`}>
-                        {category.percentuale}%
-                      </span>
+                {/* Top Row: Icon + Name on Left | Residuo + Detail Indicator on Right */}
+                <div className="flex items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="relative w-9 h-9 rounded-2xl bg-slate-100 dark:bg-[#2A2C31] flex items-center justify-center shrink-0 border border-slate-200/60 dark:border-[#3A3D45]/60">
+                      <CategoryIcon name={category.iconName} color={category.color} size={18} />
                       {isOverCat && (
-                        <span className="px-1 py-0.5 rounded text-[8.5px] font-bold whitespace-nowrap bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 border border-rose-300 dark:border-rose-800 flex items-center gap-0.5 animate-pulse">
-                          <AlertCircle size={8} className="shrink-0" />
-                          Sforato
-                        </span>
-                      )}
-                      {isNearCat && (
-                        <span className="px-1 py-0.5 rounded text-[8.5px] font-bold whitespace-nowrap bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-400 border border-orange-300 dark:border-orange-800 flex items-center gap-0.5">
-                          In esaurimento
-                        </span>
-                      )}
-                      {category.percentuale === 100 && !isOverCat && (
-                        <span className="px-1 py-0.5 rounded text-[8.5px] font-bold whitespace-nowrap bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800 flex items-center gap-0.5">
-                          Allineato
+                        <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-80"></span>
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-600 border border-white dark:border-[#222428]"></span>
                         </span>
                       )}
                     </div>
-
-                    <div className="text-[10px] sm:text-[11px] font-numeric tabular-nums text-slate-500 dark:text-slate-400 text-right truncate">
-                      <span>Prev: </span>
-                      <strong className="text-slate-800 dark:text-slate-200">{formatCurrency(category.previsione)}</strong>
-                      <span className="text-slate-400 dark:text-slate-500 mx-1">/</span>
-                      <span>Target: </span>
-                      <strong className="text-slate-800 dark:text-slate-200">{hasCatBudget ? formatCurrency(category.budget) : '—'}</strong>
+                    <div className="min-w-0">
+                      <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-[#EAEBED] truncate leading-tight">
+                        {category.categoryName}
+                      </h3>
+                      <span className="text-[10px] sm:text-[11px] text-slate-500 dark:text-[#9A9DA5] block leading-tight mt-0.5">
+                        {category.items.length} {category.items.length === 1 ? 'sottocategoria' : 'sottocategorie'}
+                      </span>
                     </div>
                   </div>
 
-                  {/* Third Row: Progress Bar of Category */}
-                  <div className="pt-0.5">
-                    <BudgetProgressBar
-                      reale={category.reale}
-                      pianificato={category.pianificato}
-                      budget={category.budget}
-                      size="md"
-                      showDetails={false}
-                      isIncome={!isExpense}
-                    />
-                    <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 pt-1 font-numeric">
-                      <span className="truncate mr-2">
-                        {isExpense ? (
-                          category.reale === 0 && category.pianificato > 0 ? (
-                            <>In programma: <strong className="text-amber-600 dark:text-amber-400 font-semibold">{formatCurrency(category.pianificato)}</strong></>
-                          ) : (
-                            <>Speso: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{formatCurrency(category.reale)}</strong>{category.pianificato > 0 ? ` (+${formatCurrency(category.pianificato)} p.)` : ''}</>
-                          )
-                        ) : (
-                          <>Incassato: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{formatCurrency(category.reale)}</strong></>
-                        )}
+                  {/* Category Residuo & Detail Arrow Indicator */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="text-right">
+                      <span className="text-slate-400 dark:text-[#9A9DA5] block text-[9px] font-medium leading-none mb-1">
+                        {isExpense ? 'Residuo' : 'Differenza'}
                       </span>
-                      <span className="font-medium text-slate-500 dark:text-slate-400 shrink-0">
-                        {catStatus.label}
+                      <span className={`font-numeric tabular-nums text-xs sm:text-sm font-bold leading-none ${
+                        category.differenza >= 0 
+                          ? 'text-[#10b981]' 
+                          : 'text-rose-500 animate-pulse'
+                      }`}>
+                        {formatCurrency(category.differenza, { showSign: true })}
                       </span>
+                    </div>
+
+                    <div className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#2A2C31] dark:hover:bg-[#32353B] border border-slate-200/80 dark:border-[#2F3136] text-slate-500 dark:text-[#9A9DA5] shrink-0 transition-colors">
+                      <ArrowUpRight size={13} className="text-[#E31B23]" />
                     </div>
                   </div>
                 </div>
 
-                {/* Subcategories List */}
-                {isExpanded && (
-                  <div className="divide-y divide-slate-100/80 dark:divide-white/5 bg-slate-50/20 dark:bg-black/10">
-                    {category.items.map(item => {
-                      const isEditing = editingSubId === item.sottocategoria_id;
-                      const hasSubBudget = item.budget > 0;
-                      const isOverSub = isExpense && hasSubBudget && item.differenza < 0;
-                      const subStatus = isExpense
-                        ? getSpendStatus(item.percentuale, hasSubBudget, item.differenza < 0)
-                        : getIncomeStatus(item.percentuale, hasSubBudget);
-
-                      return (
-                        <div
-                          key={item.sottocategoria_id}
-                          className="p-3 sm:px-4 sm:py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/70 dark:hover:bg-white/[0.02] transition-colors"
-                        >
-                          {/* Subcategory Info (Left) */}
-                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                            <div className="relative w-8 h-8 rounded-xl flex items-center justify-center shrink-0 bg-slate-100 dark:bg-white/10">
-                              <CategoryIcon name={item.icon_name} color={item.colore} size={15} />
-                              {isOverSub && (
-                                <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-80"></span>
-                                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-600 border border-white dark:border-[#1C1C1E]"></span>
-                                </span>
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <h4 className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 truncate">
-                                  {item.sottocategoria_nome}
-                                </h4>
-                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border ${subStatus.badgeBg} ${subStatus.badgeText} ${subStatus.badgeBorder}`}>
-                                  {hasSubBudget ? `${item.percentuale}%` : 'Senza Budget'}
-                                </span>
-                                {isOverSub && (
-                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 border border-rose-300 dark:border-rose-800 flex items-center gap-0.5 animate-pulse">
-                                    +{formatCurrency(Math.abs(item.differenza))}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 font-numeric tabular-nums mt-0.5">
-                                {isExpense ? (
-                                  item.reale === 0 && item.pianificato > 0 ? (
-                                    <span>In programma: <strong className="text-amber-600 dark:text-amber-400 font-semibold">{formatCurrency(item.pianificato)}</strong></span>
-                                  ) : (
-                                    <span>Speso: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{formatCurrency(item.reale)}</strong>{item.pianificato > 0 ? ` (+${formatCurrency(item.pianificato)} p.)` : ''}</span>
-                                  )
-                                ) : (
-                                  <span>Incassato: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{formatCurrency(item.reale)}</strong></span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Progress Bar & Actions (Right) */}
-                          <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-white/5">
-                            <div className="w-24 sm:w-28 hidden sm:block">
-                              <BudgetProgressBar
-                                reale={item.reale}
-                                pianificato={item.pianificato}
-                                budget={item.budget}
-                                size="sm"
-                                showDetails={false}
-                                isIncome={!isExpense}
-                              />
-                            </div>
-
-                            <div className="flex items-center gap-1.5">
-                              {isEditing ? (
-                                <div className="flex items-center gap-1">
-                                  <div className="relative">
-                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">€</span>
-                                    <input
-                                      type="text"
-                                      inputMode="decimal"
-                                      value={editBudgetAmount}
-                                      onChange={e => setEditBudgetAmount(e.target.value)}
-                                      placeholder="0"
-                                      autoFocus
-                                      className="w-20 pl-5 pr-2 py-1 text-xs font-numeric tabular-nums font-semibold bg-white dark:bg-[#2A2A2E] text-slate-900 dark:text-white border border-indigo-400 rounded-lg outline-none"
-                                    />
-                                  </div>
-                                  <button
-                                    onClick={() => handleSaveBudget(item.sottocategoria_id)}
-                                    className="p-1.5 bg-[#E31B23] text-white rounded-lg hover:bg-[#c9171e] transition-colors"
-                                    title="Salva"
-                                  >
-                                    <Check size={12} />
-                                  </button>
-                                  <button
-                                    onClick={() => setEditingSubId(null)}
-                                    className="p-1.5 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg hover:bg-slate-300 transition-colors"
-                                    title="Annulla"
-                                  >
-                                    <X size={12} />
-                                  </button>
-                                </div>
-                              ) : (
-                                <>
-                                  <button
-                                    onClick={() => {
-                                      setEditingSubId(item.sottocategoria_id);
-                                      setEditBudgetAmount(hasSubBudget ? item.budget.toString() : '');
-                                    }}
-                                    className="py-1.5 px-2.5 rounded-xl border border-slate-200 dark:border-white/10 hover:border-[#E31B23] hover:bg-red-50/50 dark:hover:bg-red-950/20 text-slate-700 dark:text-slate-300 hover:text-[#E31B23] text-xs font-semibold flex items-center justify-center gap-1.5 transition-all bg-white dark:bg-white/5 shadow-2xs"
-                                    title="Modifica importo budget"
-                                  >
-                                    <Edit2 size={11} className="shrink-0 text-slate-400" />
-                                    <span className="font-numeric tabular-nums">
-                                      {hasSubBudget ? formatCurrency(item.budget) : 'Imposta'}
-                                    </span>
-                                  </button>
-                                  {hasSubBudget && (
-                                    <button
-                                      onClick={() => handleDeleteBudget(item.sottocategoria_id)}
-                                      className="w-7 h-7 flex items-center justify-center rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors shrink-0"
-                                      title="Rimuovi budget"
-                                    >
-                                      <Trash2 size={13} />
-                                    </button>
-                                  )}
-
-                                  {onNavigateToTransactions && (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        onNavigateToTransactions({
-                                          subcategoryId: item.sottocategoria_id,
-                                          month: selectedMonth
-                                        });
-                                      }}
-                                      className="w-7 h-7 flex items-center justify-center rounded-xl text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors shrink-0"
-                                      title="Vedi movimenti"
-                                    >
-                                      <ListFilter size={13} />
-                                    </button>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
+                {/* Second Row: Badges & Target Summary */}
+                <div className="flex items-center justify-between gap-x-2 gap-y-1 text-xs pt-0.5 flex-wrap">
+                  <div className="flex items-center gap-1 flex-wrap shrink-0">
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border ${catStatus.badgeBg} ${catStatus.badgeText} ${catStatus.badgeBorder}`}>
+                      {category.percentuale}%
+                    </span>
+                    {isOverCat && (
+                      <span className="px-1 py-0.5 rounded text-[8.5px] font-bold whitespace-nowrap bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 border border-rose-300 dark:border-rose-800 flex items-center gap-0.5 animate-pulse">
+                        <AlertCircle size={8} className="shrink-0" />
+                        Sforato
+                      </span>
+                    )}
+                    {isNearCat && (
+                      <span className="px-1 py-0.5 rounded text-[8.5px] font-bold whitespace-nowrap bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-400 border border-orange-300 dark:border-orange-800 flex items-center gap-0.5">
+                        In esaurimento
+                      </span>
+                    )}
                   </div>
-                )}
+
+                  <div className="text-[10px] sm:text-[11px] font-numeric tabular-nums text-slate-500 dark:text-[#9A9DA5] text-right truncate">
+                    <span>Prev: </span>
+                    <strong className="text-slate-800 dark:text-[#EAEBED]">{formatCurrency(category.previsione)}</strong>
+                    <span className="text-slate-400 dark:text-[#9A9DA5]/60 mx-1">/</span>
+                    <span>Target: </span>
+                    <strong className="text-slate-800 dark:text-[#EAEBED]">{hasCatBudget ? formatCurrency(category.budget) : '—'}</strong>
+                  </div>
+                </div>
+
+                {/* Third Row: Progress Bar of Category */}
+                <div className="pt-0.5">
+                  <BudgetProgressBar
+                    reale={category.reale}
+                    pianificato={category.pianificato}
+                    budget={category.budget}
+                    size="md"
+                    showDetails={false}
+                    isIncome={!isExpense}
+                  />
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-[#9A9DA5] pt-1.5 font-numeric">
+                    <span className="truncate mr-2">
+                      {isExpense ? (
+                        category.reale === 0 && category.pianificato > 0 ? (
+                          <>In programma: <strong className="text-amber-500 font-semibold">{formatCurrency(category.pianificato)}</strong></>
+                        ) : (
+                          <>Speso: <strong className="text-slate-800 dark:text-[#EAEBED] font-semibold">{formatCurrency(category.reale)}</strong>{category.pianificato > 0 ? ` (+${formatCurrency(category.pianificato)} p.)` : ''}</>
+                        )
+                      ) : (
+                        <>Incassato: <strong className="text-slate-800 dark:text-[#EAEBED] font-semibold">{formatCurrency(category.reale)}</strong></>
+                      )}
+                    </span>
+                    <span className="font-semibold text-slate-500 dark:text-[#9A9DA5] shrink-0">
+                      {catStatus.label}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Subcategory Chips Preview (visibile direttamente nelle card anche su smartphone) */}
+                <div className="pt-2 border-t border-slate-100 dark:border-[#2F3136] flex flex-wrap items-center gap-1.5">
+                  {category.items.map(subItem => (
+                    <span
+                      key={subItem.sottocategoria_id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedSubIdMovements(subItem.sottocategoria_id);
+                        setSelectedSubNameMovements(subItem.sottocategoria_nome);
+                      }}
+                      className="px-2 py-0.5 rounded-lg bg-slate-100/90 dark:bg-[#2A2C31] hover:bg-indigo-50 dark:hover:bg-indigo-950/40 border border-slate-200/80 dark:border-[#3A3D45] text-[10px] font-semibold text-slate-700 dark:text-[#EAEBED] hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors flex items-center gap-1 shrink-0 cursor-pointer"
+                      title={`Clicca per vedere i movimenti di ${subItem.sottocategoria_nome}`}
+                    >
+                      <CategoryIcon name={subItem.icon_name} color={subItem.colore} size={11} />
+                      <span className="truncate max-w-[110px]">{subItem.sottocategoria_nome}</span>
+                      <span className="font-numeric text-[9.5px] opacity-75">
+                        ({subItem.budget > 0 ? formatCurrency(subItem.budget) : formatCurrency(subItem.reale)})
+                      </span>
+                    </span>
+                  ))}
+                </div>
               </div>
             );
           })}
@@ -1126,6 +1377,408 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ onNavigateToTransactions
         defaultTotalIncome={data.totalePrevisioneEntrate > 0 ? data.totalePrevisioneEntrate : (data.totaleBudgetEntrate > 0 ? data.totaleBudgetEntrate : data.totaleRealeEntrate)}
         defaultTotalExpenses={data.totalePrevisione > 0 ? data.totalePrevisione : (data.totaleBudget > 0 ? data.totaleBudget : data.totaleReale)}
       />
+
+      {/* Category Detail Modal Window ("Finestra più grande con tutta la situazione") */}
+      {activeDetailCategory && (
+        <div className="fixed inset-0 z-50 bg-black/60 dark:bg-[#18191B]/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className={`bg-white dark:bg-[#222428] border border-slate-200 dark:border-[#2F3136] rounded-3xl w-full p-6 shadow-2xl relative max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 transition-all duration-300 ${selectedSubIdMovements ? 'max-w-5xl' : 'max-w-2xl'}`}>
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#2F3136] pb-4 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-[#2A2C31] flex items-center justify-center text-slate-900 dark:text-[#EAEBED] border border-slate-200/60 dark:border-[#3A3D45]/60">
+                  <CategoryIcon name={activeDetailCategory.iconName} color={activeDetailCategory.color} size={22} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-[#EAEBED]">
+                    {activeDetailCategory.categoryName}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-[#9A9DA5]">
+                    Situazione di dettaglio • {activeDetailCategory.items.length} {activeDetailCategory.items.length === 1 ? 'sottocategoria' : 'sottocategorie'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setSelectedDetailCategory(null);
+                  setSelectedSubIdMovements(null);
+                  setSelectedSubNameMovements(null);
+                }}
+                className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#2A2C31] dark:hover:bg-[#32353B] border border-slate-200 dark:border-[#2F3136] text-slate-500 dark:text-[#9A9DA5] hover:text-slate-900 dark:hover:text-[#EAEBED] flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Split Layout Body */}
+            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0 gap-6">
+              
+              {/* Left Column (Stats & Subcategories) */}
+              <div className={`flex-1 flex flex-col overflow-y-auto no-scrollbar py-4 space-y-6 ${selectedSubIdMovements ? 'lg:flex-1 lg:pr-6 lg:border-r lg:border-slate-200 lg:dark:border-[#2F3136]' : 'w-full'}`}>
+                {/* Macro stats grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-slate-50 dark:bg-[#18191B]/50 border border-slate-200 dark:border-[#2F3136] rounded-2xl p-3">
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-[#9A9DA5] uppercase tracking-wider block mb-1">Budget Target</span>
+                    <span className="font-numeric tabular-nums text-base font-bold text-slate-900 dark:text-[#EAEBED] block">
+                      {activeDetailCategory.budget > 0 ? formatCurrency(activeDetailCategory.budget) : 'Senza Target'}
+                    </span>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-[#18191B]/50 border border-slate-200 dark:border-[#2F3136] rounded-2xl p-3">
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-[#9A9DA5] uppercase tracking-wider block mb-1">Speso/Incassato Reale</span>
+                    <span className="font-numeric tabular-nums text-base font-bold text-slate-900 dark:text-[#EAEBED] block">
+                      {formatCurrency(activeDetailCategory.reale)}
+                    </span>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-[#18191B]/50 border border-slate-200 dark:border-[#2F3136] rounded-2xl p-3">
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-[#9A9DA5] uppercase tracking-wider block mb-1">In Programma</span>
+                    <span className="font-numeric tabular-nums text-base font-bold text-amber-500 block">
+                      {formatCurrency(activeDetailCategory.pianificato)}
+                    </span>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-[#18191B]/50 border border-slate-200 dark:border-[#2F3136] rounded-2xl p-3">
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-[#9A9DA5] uppercase tracking-wider block mb-1">
+                      {isExpense ? 'Margine Residuo' : 'Differenza'}
+                    </span>
+                    <span className={`font-numeric tabular-nums text-base font-bold block ${
+                      activeDetailCategory.differenza >= 0 ? 'text-[#10b981]' : 'text-rose-500 animate-pulse'
+                    }`}>
+                      {formatCurrency(activeDetailCategory.differenza, { showSign: true })}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Progress bar */}
+                <div className="bg-slate-50 dark:bg-[#18191B]/40 border border-slate-200 dark:border-[#2F3136]/60 rounded-2xl p-4 space-y-2.5">
+                  <div className="flex items-center justify-between text-xs text-slate-500 dark:text-[#9A9DA5]">
+                    <span className="font-semibold">Progresso Categoria</span>
+                    <span className="font-bold text-slate-900 dark:text-[#EAEBED] font-mono">{activeDetailCategory.percentuale}%</span>
+                  </div>
+                  <BudgetProgressBar
+                    reale={activeDetailCategory.reale}
+                    pianificato={activeDetailCategory.pianificato}
+                    budget={activeDetailCategory.budget}
+                    size="md"
+                    showDetails={false}
+                    isIncome={!isExpense}
+                  />
+                </div>
+
+                {/* Subcategories title */}
+                <div className="flex items-center gap-3">
+                  <span className="text-[11px] font-bold text-slate-500 dark:text-[#9A9DA5] uppercase tracking-wider">
+                    Dettaglio Sottocategorie
+                  </span>
+                  <div className="h-[1px] bg-slate-200 dark:bg-[#2F3136] flex-1" />
+                </div>
+
+                {/* List of subcategories inside modal */}
+                <div className="border border-slate-200 dark:border-[#2F3136] rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-[#2F3136] bg-slate-50/50 dark:bg-[#18191B]/20">
+                  {[...activeDetailCategory.items]
+                    .sort((a, b) => b.reale - a.reale)
+                    .map(item => {
+                    const isEditing = editingSubId === item.sottocategoria_id;
+                    const hasSubBudget = item.budget > 0;
+                    const isOverSub = isExpense && hasSubBudget && item.differenza < 0;
+                    const subStatus = isExpense
+                      ? getSpendStatus(item.percentuale, hasSubBudget, item.differenza < 0)
+                      : getIncomeStatus(item.percentuale, hasSubBudget);
+
+                    return (
+                      <div
+                        key={item.sottocategoria_id}
+                        className="p-3 sm:p-4 hover:bg-slate-100/50 dark:hover:bg-[#2A2C31]/40 transition-colors flex flex-col gap-2.5"
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          {/* Left Side */}
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="relative w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-slate-100 dark:bg-[#2A2C31]">
+                              <CategoryIcon name={item.icon_name} color={item.colore} size={16} />
+                              {isOverSub && (
+                                <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-80"></span>
+                                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-600 border border-white dark:border-[#222428]"></span>
+                                </span>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-[#EAEBED] truncate">
+                                  {item.sottocategoria_nome}
+                                </h4>
+                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border ${subStatus.badgeBg} ${subStatus.badgeText} ${subStatus.badgeBorder}`}>
+                                  {hasSubBudget ? `${item.percentuale}%` : 'Senza Budget'}
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] text-slate-500 dark:text-[#9A9DA5] font-numeric mt-1">
+                                {isExpense ? (
+                                  <>
+                                    <span>Speso: <strong className="text-slate-800 dark:text-[#EAEBED] font-semibold">{formatCurrency(item.reale)}</strong></span>
+                                    <span className="text-slate-300 dark:text-slate-700/60">•</span>
+                                    <span>In programma: <strong className="text-amber-500 font-semibold">{formatCurrency(item.pianificato)}</strong></span>
+                                    <span className="text-slate-300 dark:text-slate-700/60">•</span>
+                                    <span>Previsione: <strong className="text-slate-700 dark:text-[#F5F5F7] font-semibold">{formatCurrency(item.previsione)}</strong></span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span>Incassato: <strong className="text-slate-800 dark:text-[#EAEBED] font-semibold">{formatCurrency(item.reale)}</strong></span>
+                                    <span className="text-slate-300 dark:text-slate-700/60">•</span>
+                                    <span>In programma: <strong className="text-emerald-500 font-semibold">{formatCurrency(item.pianificato)}</strong></span>
+                                    <span className="text-slate-300 dark:text-slate-700/60">•</span>
+                                    <span>Previsione: <strong className="text-slate-700 dark:text-[#F5F5F7] font-semibold">{formatCurrency(item.previsione)}</strong></span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Right Side (Budget info / Inline Edit) */}
+                          <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+                            {isEditing ? (
+                              <div className="flex items-center gap-1.5">
+                                <div className="relative">
+                                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 dark:text-[#9A9DA5]">€</span>
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={editBudgetAmount}
+                                    onChange={e => setEditBudgetAmount(e.target.value)}
+                                    placeholder="0"
+                                    autoFocus
+                                    onFocus={(e) => e.target.select()}
+                                    className="w-24 pl-5 pr-2 py-1.5 text-xs font-numeric font-semibold bg-white dark:bg-[#2A2C31] text-slate-900 dark:text-[#EAEBED] border border-[#E31B23] rounded-xl outline-none"
+                                  />
+                                </div>
+                                <button
+                                  onClick={() => handleSaveBudget(item.sottocategoria_id)}
+                                  className="p-1.5 bg-[#E31B23] text-white rounded-lg hover:bg-[#c9171e] transition-colors cursor-pointer"
+                                  title="Salva"
+                                >
+                                  <Check size={14} />
+                                </button>
+                                <button
+                                  onClick={() => setEditingSubId(null)}
+                                  className="p-1.5 bg-slate-100 dark:bg-[#2A2C31] text-slate-500 dark:text-[#9A9DA5] rounded-lg hover:bg-slate-200 dark:hover:bg-[#32353B] transition-colors cursor-pointer"
+                                  title="Annulla"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    setEditingSubId(item.sottocategoria_id);
+                                    setEditBudgetAmount(hasSubBudget ? item.budget.toString() : '');
+                                  }}
+                                  className="py-1.5 px-3 rounded-xl border border-slate-200 dark:border-[#2F3136] hover:border-[#E31B23] hover:bg-[#E31B23]/10 text-slate-700 dark:text-[#EAEBED] text-xs font-bold flex items-center justify-center gap-1.5 transition-all bg-slate-50 dark:bg-[#2A2C31] cursor-pointer"
+                                >
+                                  <Edit2 size={11} className="text-slate-400 dark:text-[#9A9DA5]" />
+                                  <span className="font-numeric">
+                                    {hasSubBudget ? formatCurrency(item.budget) : 'Imposta'}
+                                  </span>
+                                </button>
+
+                                {/* Zap button to instantly align budget with forecast amount */}
+                                <button
+                                  onClick={() => handleAlignBudgetToForecast(item.sottocategoria_id, item.previsione)}
+                                  className={`w-8 h-8 flex items-center justify-center rounded-xl bg-slate-50 dark:bg-[#2A2C31] border border-slate-200 dark:border-[#2F3136] transition-colors cursor-pointer ${
+                                    item.budget === item.previsione
+                                      ? 'text-emerald-500 hover:bg-emerald-500/10 border-emerald-500/30'
+                                      : 'text-amber-500 hover:text-[#E31B23] hover:bg-amber-500/10 hover:border-amber-500/30'
+                                  }`}
+                                  title="Pareggia budget alla spesa reale + programmata (Azzera scostamento)"
+                                >
+                                  <Zap size={13} className={item.budget !== item.previsione ? "animate-pulse" : ""} />
+                                </button>
+
+                                {hasSubBudget && (
+                                  <button
+                                    onClick={() => handleDeleteBudget(item.sottocategoria_id)}
+                                    className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-50 dark:bg-[#2A2C31] text-slate-400 dark:text-[#9A9DA5] hover:text-rose-500 hover:bg-rose-500/10 border border-slate-200 dark:border-[#2F3136] transition-colors cursor-pointer"
+                                    title="Rimuovi budget"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (selectedSubIdMovements === item.sottocategoria_id) {
+                                      setSelectedSubIdMovements(null);
+                                      setSelectedSubNameMovements(null);
+                                    } else {
+                                      setSelectedSubIdMovements(item.sottocategoria_id);
+                                      setSelectedSubNameMovements(item.sottocategoria_nome);
+                                    }
+                                  }}
+                                  className={`w-8 h-8 flex items-center justify-center rounded-xl border transition-colors cursor-pointer ${
+                                    selectedSubIdMovements === item.sottocategoria_id
+                                      ? 'bg-[#E31B23]/15 border-[#E31B23]/30 text-[#E31B23]'
+                                      : 'bg-slate-50 dark:bg-[#2A2C31] text-slate-400 dark:text-[#9A9DA5] hover:text-[#E31B23] hover:bg-[#E31B23]/10 border-slate-200 dark:border-[#2F3136]'
+                                  }`}
+                                  title="Vedi movimenti qui"
+                                >
+                                  <ListFilter size={13} />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Thin progress bar underneath */}
+                        {hasSubBudget && (
+                          <div className="w-full h-1 bg-slate-200/80 dark:bg-slate-800 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ease-out ${
+                                isOverSub
+                                  ? 'bg-[#E31B23]'
+                                  : isExpense
+                                  ? 'bg-emerald-500'
+                                  : 'bg-indigo-500'
+                              }`}
+                              style={{ width: `${Math.min(100, item.percentuale)}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Right Column (Direct inline movements list) */}
+              {selectedSubIdMovements && (
+                <div className="w-full lg:w-[380px] lg:flex-shrink-0 flex flex-col h-full overflow-hidden py-4 border-t lg:border-t-0 border-slate-200 dark:border-[#2F3136]">
+                  <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-200 dark:border-[#2F3136] shrink-0">
+                    <div className="min-w-0">
+                      <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-[#EAEBED] truncate">
+                        Movimenti: {selectedSubNameMovements}
+                      </h4>
+                      <p className="text-[10.5px] text-slate-500 dark:text-[#9A9DA5]">
+                        {subMovements.length + subPlanned.length} record in questo mese
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedSubIdMovements(null);
+                        setSelectedSubNameMovements(null);
+                      }}
+                      className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-[#2A2C31] dark:hover:bg-[#32353B] text-slate-500 dark:text-[#9A9DA5] flex items-center justify-center transition-colors cursor-pointer"
+                      title="Chiudi movimenti"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+
+                  {/* Scrollable movements list */}
+                  <div className="flex-1 overflow-y-auto no-scrollbar space-y-4 pr-1">
+                    {isLoadingMovements ? (
+                      <div className="flex flex-col items-center justify-center py-12 gap-2 text-slate-400 dark:text-[#9A9DA5]">
+                        <div className="w-5 h-5 border-2 border-[#E31B23] border-t-transparent rounded-full animate-spin" />
+                        <span className="text-[11px]">Caricamento...</span>
+                      </div>
+                    ) : subMovements.length === 0 && subPlanned.length === 0 ? (
+                      <div className="text-center py-12 text-slate-400 dark:text-[#9A9DA5] flex flex-col items-center gap-2">
+                        <Activity size={24} className="opacity-40 text-slate-400" />
+                        <span className="text-xs font-semibold">Nessun movimento trovato per questo mese.</span>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {/* 1. Planned / Pending section */}
+                        {subPlanned.length > 0 && (
+                          <div className="space-y-2">
+                            <span className="text-[10px] font-bold text-amber-500 tracking-wider uppercase block px-1">In Programma</span>
+                            {subPlanned.map(p => (
+                              <div
+                                key={p.id}
+                                className="bg-amber-500/5 border border-amber-500/15 rounded-2xl p-3 flex items-center justify-between gap-3"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <Clock size={12} className="text-amber-500 shrink-0" />
+                                    <h5 className="text-xs font-bold text-slate-800 dark:text-[#EAEBED] truncate">{p.descrizione}</h5>
+                                  </div>
+                                  <div className="text-[10.5px] text-slate-500 dark:text-[#9A9DA5] mt-1 font-numeric">
+                                    Previsione: {formatDMY(p.data_prevista)}
+                                  </div>
+                                  {p.note && (
+                                    <p className="text-[9.5px] italic text-slate-400 dark:text-[#9A9DA5]/70 mt-0.5 truncate">{p.note}</p>
+                                  )}
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <span className="font-numeric font-bold text-xs text-amber-500 block">
+                                    {formatCurrency(p.importo)}
+                                  </span>
+                                  <span className="text-[8px] uppercase tracking-wider font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 px-1 py-0.5 rounded">
+                                    Pendente
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* 2. Real movements section */}
+                        {subMovements.length > 0 && (
+                          <div className="space-y-2">
+                            <span className="text-[10px] font-bold text-slate-500 dark:text-[#9A9DA5] tracking-wider uppercase block px-1">Effettuati</span>
+                            {subMovements.map(m => (
+                              <div
+                                key={m.id}
+                                className="bg-slate-50/50 dark:bg-[#1C1E22] border border-slate-100 dark:border-[#2F3136]/50 rounded-2xl p-3 flex items-center justify-between gap-3"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <FileText size={12} className="text-slate-400 dark:text-[#9A9DA5] shrink-0" />
+                                    <h5 className="text-xs font-bold text-slate-800 dark:text-[#EAEBED] truncate">{m.descrizione}</h5>
+                                  </div>
+                                  <div className="text-[10.5px] text-slate-500 dark:text-[#9A9DA5] mt-1 font-numeric">
+                                    Data: {formatDMY(m.data)}
+                                  </div>
+                                  {m.note && (
+                                    <p className="text-[9.5px] italic text-slate-400 dark:text-[#9A9DA5]/70 mt-0.5 truncate">{m.note}</p>
+                                  )}
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <span className={`font-numeric font-bold text-xs block ${
+                                    m.tipologia === 'ENTRATA' ? 'text-emerald-500' : 'text-slate-800 dark:text-[#EAEBED]'
+                                  }`}>
+                                    {m.tipologia === 'ENTRATA' ? '+' : '-'}{formatCurrency(m.importo)}
+                                  </span>
+                                  <span className="text-[8.5px] font-mono font-medium text-slate-400 dark:text-[#9A9DA5]">
+                                    {m.origine_dati}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+            {/* Footer / Close action */}
+            <div className="border-t border-slate-100 dark:border-[#2F3136] pt-4 flex justify-end shrink-0">
+              <button
+                onClick={() => {
+                  setSelectedDetailCategory(null);
+                  setSelectedSubIdMovements(null);
+                  setSelectedSubNameMovements(null);
+                }}
+                className="px-5 py-2.5 rounded-xl bg-[#E31B23] hover:bg-[#c9171e] text-white text-xs font-bold transition-all active:scale-95 cursor-pointer shadow-md"
+              >
+                Chiudi Dettaglio
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

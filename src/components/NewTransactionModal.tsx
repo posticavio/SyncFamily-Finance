@@ -29,14 +29,16 @@ import {
   PiggyBank,
   Coins,
   Sun,
-  Moon
+  Moon,
+  Repeat
 } from 'lucide-react';
-import { Movement, Subcategory, Account, Fund, MovementType, MovementNecessity, TransactionTemplate, Project, MovementAttachment, getSubcategoryNecessity } from '../types';
+import { Movement, Subcategory, Account, Fund, MovementType, MovementNecessity, TransactionTemplate, Project, MovementAttachment, Recurrence, getSubcategoryNecessity } from '../types';
 import { MovementService } from '../services/MovementService';
 import { CategoryService } from '../services/CategoryService';
 import { AccountService } from '../services/AccountService';
 import { TemplateService } from '../services/TemplateService';
 import { ProjectService } from '../services/ProjectService';
+import { RecurrenceService } from '../services/RecurrenceService';
 import { GoogleDriveService } from '../services/GoogleDriveService';
 import { subscribeToDB } from '../services/store';
 import { CategoryIcon } from './CategoryIcon';
@@ -55,6 +57,35 @@ interface NewTransactionModalProps {
   onSuccess: () => void;
   templates?: TransactionTemplate[];
 }
+
+export const getDefaultSubcategory = (subcategories: Subcategory[], tipologia: MovementType): Subcategory | undefined => {
+  if (!subcategories || subcategories.length === 0) return undefined;
+  
+  const validSubs = subcategories.filter(s => {
+    if ((s as any).attiva === false) return false;
+    if (tipologia === 'GIROCONTO') return s.tipo === 'GIROCONTO';
+    return s.tipo === tipologia;
+  });
+
+  if (validSubs.length === 0) return subcategories[0];
+
+  // 1. Priorità massima: Sottocategoria Generica / Altro / Spese Varie / Da Classificare
+  const catchAllKeywords = ['altro', 'spese varie', 'varie', 'generale', 'da classificare', 'extra', 'unassigned'];
+  const catchAll = validSubs.find(s => {
+    const nome = (s.nome || '').toLowerCase();
+    const parent = (s.categoria_padre || '').toLowerCase();
+    return catchAllKeywords.some(kw => nome.includes(kw) || parent.includes(kw));
+  });
+
+  if (catchAll) return catchAll;
+
+  // 2. Sottocategoria preferita
+  const fav = validSubs.find(s => s.preferita);
+  if (fav) return fav;
+
+  // 3. Prima valida
+  return validSubs[0];
+};
 
 export const getDefaultAccountId = (accounts: Account[]): string => {
   if (!accounts || accounts.length === 0) return '';
@@ -92,7 +123,7 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
   );
   const [descrizione, setDescrizione] = useState<string>(initialMovement?.descrizione || '');
   const [sottocategoriaId, setSottocategoriaId] = useState<string>(
-    initialMovement?.sottocategoria_id || (subcategories.find(s => s.preferita)?.id || subcategories[0]?.id || '')
+    initialMovement?.sottocategoria_id || getDefaultSubcategory(subcategories, initialMovement?.tipologia || 'USCITA')?.id || subcategories[0]?.id || ''
   );
   const [contoOrigine, setContoOrigine] = useState<string>(
     initialMovement?.conto_origine || getDefaultAccountId(accounts)
@@ -118,18 +149,28 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
     initialMovement?.tag || (initialMovement?.tags && initialMovement?.tags[0]) || ''
   );
   const [progettoId, setProgettoId] = useState<string | null>(initialMovement?.progetto_id || null);
+  const [idRicorrenza, setIdRicorrenza] = useState<string | null>(initialMovement?.id_ricorrenza || null);
+  const [allRecurrences, setAllRecurrences] = useState<Recurrence[]>([]);
   const [allegati, setAllegati] = useState<MovementAttachment[]>(initialMovement?.allegati || []);
   const [uploadingFile, setUploadingFile] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sincronizzazione / Reset all'apertura del modale o cambio initialMovement
+  const prevIsOpenRef = useRef(false);
+  const prevInitialMovementRef = useRef<Movement | null | undefined>(undefined);
+
+  // Sincronizzazione / Reset solo all'apertura del modale o cambio reale di initialMovement
   useEffect(() => {
-    if (isOpen) {
-      if (initialMovement && initialMovement.id) {
+    const isOpening = isOpen && !prevIsOpenRef.current;
+    const movementChanged = isOpen && initialMovement !== prevInitialMovementRef.current;
+
+    if (isOpening || movementChanged) {
+      if (initialMovement && initialMovement.id && initialMovement.id.trim() !== '') {
         setTipologia(initialMovement.tipologia || 'USCITA');
         setImportoStr(initialMovement.importo > 0 ? initialMovement.importo.toString() : '');
         setDescrizione(initialMovement.descrizione || '');
-        setSottocategoriaId(initialMovement.sottocategoria_id || (subcategories.find(s => s.preferita)?.id || subcategories[0]?.id || ''));
+        const subToSet = (initialMovement.sottocategoria_id && subcategories.find(s => s.id === initialMovement.sottocategoria_id))
+          || getDefaultSubcategory(subcategories, initialMovement.tipologia || 'USCITA');
+        if (subToSet) setSottocategoriaId(subToSet.id);
         const sourceAcc = initialMovement.conto_origine || getDefaultAccountId(accounts);
         setContoOrigine(sourceAcc);
         setContoDestinazione(initialMovement.conto_destinazione || (accounts.find(a => a.id !== sourceAcc)?.id || accounts[1]?.id || ''));
@@ -145,31 +186,101 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
         setProgettoId(initialMovement.progetto_id || null);
         setAllegati(initialMovement.allegati || []);
       } else {
-        setTipologia('USCITA');
-        setImportoStr('');
-        setDescrizione('');
-        const favSub = subcategories.find(s => s.preferita && s.tipo === 'USCITA') || subcategories.find(s => s.tipo === 'USCITA') || subcategories[0];
+        const initType = initialMovement?.tipologia || 'USCITA';
+        setTipologia(initType);
+        setImportoStr(initialMovement && initialMovement.importo > 0 ? initialMovement.importo.toString() : '');
+        setDescrizione(initialMovement?.descrizione || '');
+        const favSub = (initialMovement?.sottocategoria_id && subcategories.find(s => s.id === initialMovement.sottocategoria_id))
+          || getDefaultSubcategory(subcategories, initType);
         if (favSub) {
           setSottocategoriaId(favSub.id);
           setNecessita(getSubcategoryNecessity(favSub));
         } else {
           setNecessita('DEVO');
         }
-        const defaultAcc = getDefaultAccountId(accounts);
-        setContoOrigine(defaultAcc);
-        const targetAcc = accounts.find(a => a.id !== defaultAcc) || accounts[1];
-        if (targetAcc) setContoDestinazione(targetAcc.id);
-        setDataMovimento(new Date().toISOString().split('T')[0]);
-        setNatura('VARIABILE');
-        setNote('');
-        setTag('');
-        setProgettoId(null);
-        setAllegati([]);
+        const sourceAcc = initialMovement?.conto_origine || getDefaultAccountId(accounts);
+        setContoOrigine(sourceAcc);
+        const targetAcc = initialMovement?.conto_destinazione || (accounts.find(a => a.id !== sourceAcc)?.id || accounts[1]?.id || '');
+        setContoDestinazione(targetAcc);
+        setDataMovimento(initialMovement?.data || new Date().toISOString().split('T')[0]);
+        setNatura(initialMovement?.natura || 'VARIABILE');
+        setNote(initialMovement?.note || '');
+        setTag(initialMovement?.tag || (initialMovement?.tags && initialMovement?.tags[0]) || '');
+        setProgettoId(initialMovement?.progetto_id || null);
+        setIdRicorrenza(initialMovement?.id_ricorrenza || null);
+        setAllegati(initialMovement?.allegati || []);
       }
       setShowCategoryPicker(false);
+      setShowAccountPicker(null);
       setErrorMsg(null);
     }
-  }, [isOpen, initialMovement, accounts, subcategories]);
+
+    prevIsOpenRef.current = isOpen;
+    prevInitialMovementRef.current = initialMovement;
+  }, [isOpen, initialMovement]);
+
+  // Caricamento ricorrenze all'apertura
+  useEffect(() => {
+    if (isOpen) {
+      RecurrenceService.getAll().then(setAllRecurrences).catch(console.error);
+    }
+  }, [isOpen]);
+
+  // Supporto incolla da appunti (Ctrl+V / Cmd+V) per screenshot senza salvare il file in locale
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handlePaste = async (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items || items.length === 0) return;
+
+      const imageItems: DataTransferItem[] = [];
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith('image/')) {
+          imageItems.push(items[i]);
+        }
+      }
+
+      if (imageItems.length === 0) return;
+
+      e.preventDefault();
+      setUploadingFile(true);
+      setErrorMsg(null);
+      haptics.tap();
+
+      try {
+        const chosenSub = subcategories.find(s => s.id === sottocategoriaId);
+        const parsedAmount = parseFloat(importoStr) || 0;
+        const newAttachments: MovementAttachment[] = [...allegati];
+
+        for (const item of imageItems) {
+          const file = item.getAsFile();
+          if (file) {
+            const ext = file.type.split('/')[1] || 'png';
+            const screenshotFile = new File([file], `screenshot_${Date.now()}.${ext}`, { type: file.type });
+            const attached = await GoogleDriveService.uploadFile(screenshotFile, {
+              descrizione: descrizione || 'Screenshot',
+              categoria: chosenSub ? chosenSub.nome : 'Generale',
+              importo: parsedAmount,
+              data: dataMovimento
+            });
+            newAttachments.push(attached);
+          }
+        }
+        setAllegati(newAttachments);
+        haptics.success();
+      } catch (err: any) {
+        console.error("Errore durante incolla screenshot:", err);
+        setErrorMsg("Errore nel caricamento dello screenshot incollato.");
+        haptics.error();
+      } finally {
+        setUploadingFile(false);
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [isOpen, sottocategoriaId, importoStr, descrizione, dataMovimento, allegati, subcategories]);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -303,9 +414,11 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
 
     const isCurrentValid = validSubs.some(s => s.id === sottocategoriaId);
     if (!isCurrentValid && validSubs.length > 0) {
-      const fav = validSubs.find(s => s.preferita) || validSubs[0];
-      setSottocategoriaId(fav.id);
-      setNecessita(getSubcategoryNecessity(fav));
+      const defaultSub = getDefaultSubcategory(subcategories, tipologia);
+      if (defaultSub) {
+        setSottocategoriaId(defaultSub.id);
+        setNecessita(getSubcategoryNecessity(defaultSub));
+      }
     }
   }, [tipologia, subcategories]);
 
@@ -319,11 +432,10 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
   // Sync sottocategoria se non ancora impostata
   useEffect(() => {
     if (!sottocategoriaId && subcategories.length > 0) {
-      const validSubs = subcategories.filter(s => tipologia === 'GIROCONTO' ? s.tipo === 'GIROCONTO' : s.tipo === tipologia);
-      const fav = validSubs.find(s => s.preferita) || validSubs[0] || subcategories[0];
-      if (fav) {
-        setSottocategoriaId(fav.id);
-        setNecessita(getSubcategoryNecessity(fav));
+      const defaultSub = getDefaultSubcategory(subcategories, tipologia);
+      if (defaultSub) {
+        setSottocategoriaId(defaultSub.id);
+        setNecessita(getSubcategoryNecessity(defaultSub));
       }
     }
   }, [subcategories, sottocategoriaId, tipologia]);
@@ -647,6 +759,8 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
           natura,
           necessita,
           progetto_id: targetProjectId,
+          id_ricorrenza: idRicorrenza || null,
+          origine_dati: idRicorrenza ? 'RICORRENZA' : (initialMovement.origine_dati || 'MANUALE'),
           tag: cleanTag,
           tags: cleanTags,
           note,
@@ -664,11 +778,12 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
           natura,
           necessita,
           progetto_id: targetProjectId,
+          id_ricorrenza: idRicorrenza || null,
+          origine_dati: idRicorrenza ? 'RICORRENZA' : 'MANUALE',
           tag: cleanTag,
           tags: cleanTags,
           note,
-          allegati,
-          origine_dati: 'MANUALE'
+          allegati
         });
       }
 
@@ -1569,6 +1684,43 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
                     </select>
                   </div>
                 )}
+
+                {/* Assegna / Collega a Ricorrenza o Rata Periodica */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Repeat size={12} className="text-[#E31B23]" />
+                      <span>Collega a Ricorrenza o Rata Periodica</span>
+                    </label>
+                    {idRicorrenza && (
+                      <span className="text-[10px] font-bold text-[#E31B23] bg-red-500/10 px-2 py-0.5 rounded-full border border-[#E31B23]/20">
+                        Ricorrente
+                      </span>
+                    )}
+                  </div>
+                  <select
+                    value={idRicorrenza || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setIdRicorrenza(val || null);
+                      if (val) {
+                        const rec = allRecurrences.find(r => r.id === val);
+                        if (rec) {
+                          if (rec.sottocategoria_id) setSottocategoriaId(rec.sottocategoria_id);
+                          if (!descrizione.trim()) setDescrizione(rec.nome);
+                        }
+                      }
+                    }}
+                    className="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-[#242426] text-slate-900 dark:text-white rounded-lg border border-slate-200/80 dark:border-white/10 outline-none focus:border-[#E31B23] font-medium"
+                  >
+                    <option value="">Nessun collegamento (Movimento singolo)</option>
+                    {allRecurrences.map(rec => (
+                      <option key={rec.id} value={rec.id}>
+                        {rec.nome} ({rec.frequenza} - {formatCurrency(rec.importo)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
                 {/* Salva come Modello Ricorrente */}
                 <div className="pt-0.5">

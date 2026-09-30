@@ -1,6 +1,11 @@
 @import "tailwindcss";
 @variant dark (&:where(.dark, .dark *));
 
+/* Regola Tipografica Globale Obbligatoria Google Sans */
+* {
+  font-family: 'Google Sans', 'Product Sans', sans-serif !important;
+}
+
 @layer base {
   :root {
     --font-sans: 'Google Sans', 'Google Sans Text', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -23,14 +28,14 @@
 
   html.dark body,
   body.dark {
-    color: #F5F5F7;
-    background: #121212;
+    color: #EAEBED !important;
+    background: #18191B !important;
   }
 }
 
 /* Custom Utilities for Samsung One UI & Fintech */
 .font-numeric {
-  font-family: var(--font-mono);
+  font-family: 'Google Sans', 'Product Sans', sans-serif !important;
   font-feature-settings: "tnum" 1;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
@@ -50,10 +55,10 @@ body, .bento-card, .glass-panel, .glass-dropdown {
 }
 
 .dark .glass-panel {
-  background: rgba(28, 28, 30, 0.94);
+  background: rgba(34, 36, 40, 0.94) !important;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid #2F3136 !important;
 }
 
 .glass-dropdown {
@@ -64,10 +69,10 @@ body, .bento-card, .glass-panel, .glass-dropdown {
 }
 
 .dark .glass-dropdown {
-  background: rgba(28, 28, 30, 0.98);
+  background: rgba(34, 36, 40, 0.98) !important;
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid #2F3136 !important;
   box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.7);
 }
 
@@ -81,58 +86,67 @@ body, .bento-card, .glass-panel, .glass-dropdown {
 
 /* Dark Mode Bento-Card */
 .dark .bento-card {
-  background: #1C1C1E;
-  border-color: rgba(255, 255, 255, 0.06);
+  background: #222428 !important;
+  border-color: #2F3136 !important;
   box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.4);
 }
 
-/* Dark Mode Harmonizers for Samsung One UI (#1C1C1E / #242426) */
-.dark .bg-white {
-  background-color: #1C1C1E !important;
+/* Dark Mode Harmonizers for Samsung One UI (#222428 / #2A2C31 / #2F3136) */
+.dark .bg-white,
+.dark .bg-\[\#1C1C1E\] {
+  background-color: #222428 !important;
 }
 
 .dark .bg-slate-50,
 .dark .bg-slate-50\/80,
-.dark .bg-slate-50\/60 {
-  background-color: #242426 !important;
-}
-
-.dark .bg-slate-100 {
-  background-color: #242426 !important;
+.dark .bg-slate-50\/60,
+.dark .bg-slate-100,
+.dark .bg-\[\#242426\] {
+  background-color: #222428 !important;
 }
 
 .dark .bg-slate-200,
-.dark .bg-slate-200\/60 {
-  background-color: #2A2A2E !important;
+.dark .bg-slate-200\/60,
+.dark .bg-\[\#2A2A2E\],
+.dark .bg-slate-800,
+.dark .bg-slate-850\/30,
+.dark .bg-\[\#2E2E32\],
+.dark .bg-\[\#252528\] {
+  background-color: #2A2C31 !important;
 }
 
 .dark .text-slate-900,
-.dark .text-slate-800 {
-  color: #F5F5F7 !important;
+.dark .text-slate-800,
+.dark .text-white,
+.dark .text-slate-100 {
+  color: #EAEBED !important;
 }
 
 .dark .text-slate-600,
 .dark .text-slate-500,
-.dark .text-slate-400 {
-  color: #8E8E93 !important;
+.dark .text-slate-400,
+.dark .text-\[\#8E8E93\] {
+  color: #9A9DA5 !important;
 }
 
 .dark .border-slate-100,
 .dark .border-slate-200,
 .dark .border-slate-200\/80,
 .dark .border-slate-200\/70,
-.dark .border-slate-300 {
-  border-color: rgba(255, 255, 255, 0.07) !important;
+.dark .border-slate-300,
+.dark .border-white\/5,
+.dark .border-white\/10 {
+  border-color: #2F3136 !important;
 }
 
 .dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
 .dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
-  border-color: rgba(255, 255, 255, 0.07) !important;
+  border-color: #2F3136 !important;
 }
 
 /* Recharts grid lines in dark mode */
 .dark .recharts-cartesian-grid line {
-  stroke: rgba(255, 255, 255, 0.07) !important;
+  stroke: #2F3136 !important;
 }
 
 /* Hide scrollbar while preserving scrolling */

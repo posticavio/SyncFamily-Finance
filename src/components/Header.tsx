@@ -20,12 +20,14 @@ import {
   Search,
   Camera,
   Calculator,
-  Printer
+  Printer,
+  Repeat,
+  Bot
 } from 'lucide-react';
 import { CloudSyncStatus } from '../services/store';
 import { ThemeToggle } from './ThemeToggle';
 
-export type AppTabType = 'DASHBOARD' | 'ANALISI' | 'TRANSAZIONI' | 'REPORT_AI' | 'CALENDARIO' | 'BUDGET' | 'PROGETTI' | 'NOTE' | 'IMPOSTAZIONI' | 'CONTI';
+export type AppTabType = 'DASHBOARD' | 'ANALISI' | 'TRANSAZIONI' | 'RICORRENZE' | 'REPORT_AI' | 'CALENDARIO' | 'BUDGET' | 'PROGETTI' | 'NOTE' | 'IMPOSTAZIONI' | 'CONTI';
 
 interface HeaderProps {
   activeTab: AppTabType;
@@ -38,10 +40,12 @@ interface HeaderProps {
   onOpenBackup: () => void;
   onOpenCategories?: () => void;
   onOpenReconciliation?: () => void;
+  onOpenBalanceCorrection?: () => void;
   onOpenSpotlight?: () => void;
   onOpenReceiptScanner?: () => void;
   onOpenPurchaseImpact?: () => void;
   onOpenExportSummary?: () => void;
+  onOpenAIChat?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -55,10 +59,12 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenBackup,
   onOpenCategories,
   onOpenReconciliation,
+  onOpenBalanceCorrection,
   onOpenSpotlight,
   onOpenReceiptScanner,
   onOpenPurchaseImpact,
-  onOpenExportSummary
+  onOpenExportSummary,
+  onOpenAIChat,
 }) => {
   const [isToolsOpen, setIsToolsOpen] = useState(false);
   const toolsMenuRef = useRef<HTMLDivElement>(null);
@@ -113,13 +119,14 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
-  const isToolsActive = ['PROGETTI', 'NOTE', 'REPORT_AI', 'IMPOSTAZIONI'].includes(activeTab);
+  const isToolsActive = ['PROGETTI', 'NOTE', 'REPORT_AI', 'RICORRENZE', 'IMPOSTAZIONI'].includes(activeTab);
 
   const navTabs: { id: AppTabType; label: string; shortcut: string; icon: React.ComponentType<{ size: number; className?: string }> }[] = [
     { id: 'DASHBOARD', label: 'Homepage', shortcut: 'H', icon: LayoutDashboard },
     { id: 'ANALISI', label: 'Analisi', shortcut: 'A', icon: LineChart },
     { id: 'BUDGET', label: 'Budget', shortcut: 'B', icon: PieChart },
     { id: 'TRANSAZIONI', label: 'Movimenti', shortcut: 'M', icon: ListFilter },
+    { id: 'RICORRENZE', label: 'Ricorrenze', shortcut: 'R', icon: Repeat },
     { id: 'CONTI', label: 'Patrimonio & Conti', shortcut: 'C', icon: Landmark },
     { id: 'CALENDARIO', label: 'Calendario', shortcut: 'L', icon: Calendar },
   ];
@@ -127,7 +134,7 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="bg-white dark:bg-[#121212] border-b border-slate-200/80 dark:border-white/5 sticky top-0 z-30 shadow-xs backdrop-blur-md">
       {/* 2. HEADER GLOBALE (TOP BAR) */}
-      <div className="w-full max-w-7xl mx-auto h-11 md:h-13 px-2.5 sm:px-6 flex items-center justify-between gap-2 sm:gap-4">
+      <div className="w-full max-w-7xl mx-auto h-11 md:h-13 px-4 md:px-8 flex items-center justify-between gap-2 sm:gap-4">
         {/* Sinistra: Nome App + Indicatore di stato discreto Firestore */}
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="w-8 h-8 rounded-[11px] bg-[#E31B23]/15 text-[#E31B23] border border-[#E31B23]/25 flex items-center justify-center font-bold text-sm">
@@ -157,6 +164,22 @@ export const Header: React.FC<HeaderProps> = ({
               <kbd className="hidden sm:inline-block px-1.5 py-0.2 text-[9.5px] font-mono font-bold text-slate-400 dark:text-[#8E8E93] bg-white dark:bg-[#242426] rounded border border-slate-200/80 dark:border-white/10">
                 ⌘K
               </kbd>
+            </button>
+          )}
+
+          {/* Pulsante Assistente AI Finanziario Gemini */}
+          {onOpenAIChat && (
+            <button
+              id="header-gemini-ai-btn"
+              onClick={onOpenAIChat}
+              className="h-8 sm:h-9 px-2.5 sm:px-3.5 flex items-center gap-1.5 rounded-full bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:opacity-95 text-white font-bold text-xs sm:text-sm shadow-md shadow-red-600/25 transition active:scale-95 cursor-pointer shrink-0"
+              title="Chiedi a Gemini (Assistente Finanziario per spese, entrate e grafici)"
+            >
+              <div className="relative flex items-center justify-center">
+                <Sparkles size={15} className="animate-pulse" />
+                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-yellow-300 ring-1 ring-white" />
+              </div>
+              <span className="font-extrabold tracking-wide whitespace-nowrap">Chiedi a Gemini</span>
             </button>
           )}
 
@@ -203,6 +226,26 @@ export const Header: React.FC<HeaderProps> = ({
                     <button
                       onClick={() => {
                         setIsToolsOpen(false);
+                        setActiveTab('RICORRENZE');
+                      }}
+                      className={`w-full px-3 py-2 rounded-[14px] text-left flex items-center gap-2.5 text-xs transition-colors ${
+                        activeTab === 'RICORRENZE'
+                          ? 'bg-[#E31B23]/15 text-[#E31B23] font-bold'
+                          : 'text-slate-700 dark:text-[#F5F5F7] hover:bg-slate-100 dark:hover:bg-[#242426]'
+                      }`}
+                    >
+                      <div className="w-7 h-7 rounded-[10px] bg-red-500/15 text-[#E31B23] flex items-center justify-center shrink-0">
+                        <Repeat size={14} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="block font-semibold truncate">Gestione Ricorrenze & Rate</span>
+                        <span className="text-[10px] text-slate-400 dark:text-[#8E8E93] block truncate">Spese periodiche e rate per sottocategoria</span>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setIsToolsOpen(false);
                         setActiveTab('REPORT_AI');
                       }}
                       className={`w-full px-3 py-2 rounded-[14px] text-left flex items-center gap-2.5 text-xs transition-colors ${
@@ -219,6 +262,24 @@ export const Header: React.FC<HeaderProps> = ({
                         <span className="text-[10px] text-slate-400 dark:text-[#8E8E93] block truncate">Analisi settimanale e consigli</span>
                       </div>
                     </button>
+
+                    {onOpenAIChat && (
+                      <button
+                        onClick={() => {
+                          setIsToolsOpen(false);
+                          onOpenAIChat();
+                        }}
+                        className="w-full px-3 py-2 rounded-[14px] text-left flex items-center gap-2.5 text-xs text-slate-700 dark:text-[#F5F5F7] hover:bg-slate-100 dark:hover:bg-[#242426] transition-colors"
+                      >
+                        <div className="w-7 h-7 rounded-[10px] bg-red-500/15 text-[#E31B23] flex items-center justify-center shrink-0">
+                          <Bot size={14} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="block font-semibold truncate text-[#E31B23]">Chiedi a Gemini (Chatbot)</span>
+                          <span className="text-[10px] text-slate-400 dark:text-[#8E8E93] block truncate">Domande su spese, entrate e grafici</span>
+                        </div>
+                      </button>
+                    )}
 
                     {onOpenReceiptScanner && (
                       <button
@@ -321,6 +382,24 @@ export const Header: React.FC<HeaderProps> = ({
                         <span className="text-[10px] text-slate-400 dark:text-[#8E8E93] block truncate">Promemoria e appunti</span>
                       </div>
                     </button>
+
+                    {onOpenBalanceCorrection && (
+                      <button
+                        onClick={() => {
+                          setIsToolsOpen(false);
+                          onOpenBalanceCorrection();
+                        }}
+                        className="w-full px-3 py-2 rounded-[14px] text-left flex items-center gap-2.5 text-xs text-slate-700 dark:text-[#F5F5F7] hover:bg-slate-100 dark:hover:bg-[#242426] transition-colors"
+                      >
+                        <div className="w-7 h-7 rounded-[10px] bg-red-500/15 text-[#E31B23] flex items-center justify-center shrink-0">
+                          <Sparkles size={14} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="block font-semibold truncate">Correzione Saldo Conti</span>
+                          <span className="text-[10px] text-slate-400 dark:text-[#8E8E93] block truncate">Allinea saldi ed effettua rettifiche</span>
+                        </div>
+                      </button>
+                    )}
 
                     {onOpenReconciliation && (
                       <button
@@ -430,7 +509,7 @@ export const Header: React.FC<HeaderProps> = ({
       {/* 3. BARRA DI NAVIGAZIONE PRINCIPALE DESKTOP (One UI Pill Style) */}
       <nav 
         id="main-navigation-tabs"
-        className="hidden md:flex items-center gap-1.5 px-4 md:px-6 bg-white dark:bg-[#121212] border-t border-slate-100 dark:border-white/5 overflow-x-auto no-scrollbar max-w-7xl mx-auto py-1.5"
+        className="hidden md:flex w-full items-center gap-1.5 px-4 md:px-8 bg-white dark:bg-[#121212] border-t border-slate-100 dark:border-white/5 overflow-x-auto no-scrollbar max-w-7xl mx-auto py-1.5"
       >
         {navTabs.map((tab) => {
           const isActive = activeTab === tab.id;
@@ -455,6 +534,17 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           );
         })}
+
+        {onOpenAIChat && (
+          <button
+            onClick={onOpenAIChat}
+            className="ml-auto flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold text-white bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:opacity-95 shadow-xs cursor-pointer transition active:scale-95 shrink-0"
+            title="Assistente AI Finanziario Gemini"
+          >
+            <Sparkles size={14} className="text-yellow-300 animate-pulse" />
+            <span>Assistente Gemini</span>
+          </button>
+        )}
       </nav>
     </header>
   );

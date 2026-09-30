@@ -128,6 +128,20 @@ const INITIAL_DATABASE: DatabaseSchema = {
   ],
   SOTTOCATEGORIE: [
     {
+      id: "sub-altro-00",
+      sottocategoria_id: "SUB00000",
+      nome: "Altro / Spese Varie",
+      categoria_padre: "Spese Varie",
+      tipo: "USCITA",
+      classificazione: "SPESE_EXTRA",
+      necessita: "VOGLIO",
+      icon_name: "HelpCircle",
+      colore: "#64748b",
+      preferita: true,
+      ordine: 1,
+      attiva: true
+    },
+    {
       id: "sub-spesa-01",
       sottocategoria_id: "SUB00001",
       nome: "Supermercato & Spesa",
@@ -137,8 +151,8 @@ const INITIAL_DATABASE: DatabaseSchema = {
       necessita: "HO_BISOGNO",
       icon_name: "ShoppingCart",
       colore: "#2563eb",
-      preferita: true,
-      ordine: 1,
+      preferita: false,
+      ordine: 2,
       attiva: true
     },
     {
@@ -955,7 +969,84 @@ const INITIAL_DATABASE: DatabaseSchema = {
       note: "Rinnovo mensile inizio mese"
     }
   ],
-  RICORRENZE: [],
+  RICORRENZE: [
+    {
+      id: "rec-mutuo-001",
+      ricorrenza_id: "RIC00001",
+      nome: "Rata Mutuo Casa",
+      frequenza: "MENSILE",
+      giorno_esecuzione: 15,
+      importo: 680.00,
+      tipologia: "USCITA",
+      conto_id: "acc-main-001",
+      sottocategoria_id: "sub-affitto-03",
+      attiva: true,
+      tipo_limite: "TOT_VOLTE",
+      ripetizioni_totali: 240,
+      ripetizioni_eseguite: 36,
+      data_inizio: "2023-10-15",
+      prossima_data: `${currentYear}-${currentMonth}-15`,
+      genera_pianificato_automatico: true,
+      note: "Addebito RID automatico banca"
+    },
+    {
+      id: "rec-palestra-002",
+      ricorrenza_id: "RIC00002",
+      nome: "Abbonamento Palestra Famiglia",
+      frequenza: "MENSILE",
+      giorno_esecuzione: 5,
+      importo: 75.00,
+      tipologia: "USCITA",
+      conto_id: "acc-card-002",
+      sottocategoria_id: "sub-sport-09",
+      attiva: true,
+      tipo_limite: "TOT_VOLTE",
+      ripetizioni_totali: 12,
+      ripetizioni_eseguite: 4,
+      data_inizio: `${currentYear}-01-05`,
+      prossima_data: (() => {
+        const nextM = now.getMonth() + 2 > 12 ? 1 : now.getMonth() + 2;
+        const nextY = now.getMonth() + 2 > 12 ? currentYear + 1 : currentYear;
+        return `${nextY}-${nextM.toString().padStart(2, '0')}-05`;
+      })(),
+      genera_pianificato_automatico: true,
+      note: "Contratto annuale palestra"
+    },
+    {
+      id: "rec-stipendio-003",
+      ricorrenza_id: "RIC00003",
+      nome: "Accredito Stipendio Principale",
+      frequenza: "MENSILE",
+      giorno_esecuzione: 27,
+      importo: 2150.00,
+      tipologia: "ENTRATA",
+      conto_id: "acc-main-001",
+      sottocategoria_id: "sub-stipendio-11",
+      attiva: true,
+      tipo_limite: "ILLIMITATA",
+      data_inizio: "2022-01-27",
+      prossima_data: `${currentYear}-${currentMonth}-27`,
+      genera_pianificato_automatico: true,
+      note: "Busta paga fissa mensile"
+    },
+    {
+      id: "rec-fibra-004",
+      ricorrenza_id: "RIC00004",
+      nome: "Fibra Ottica & Telefono Casa",
+      frequenza: "MENSILE",
+      giorno_esecuzione: 10,
+      importo: 29.90,
+      tipologia: "USCITA",
+      conto_id: "acc-main-001",
+      sottocategoria_id: "sub-internet-05",
+      attiva: true,
+      tipo_limite: "ILLIMITATA",
+      data_inizio: "2024-03-10",
+      prossima_data: `${currentYear}-${currentMonth}-10`,
+      genera_pianificato_automatico: true,
+      note: "Canone mensile internet"
+    }
+  ],
   BUDGET: [
     {
       id: "bud-001",
@@ -1133,25 +1224,10 @@ function loadLocalCache(): DatabaseSchema {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (parsed && parsed.CONTI && parsed.MOVIMENTI && parsed.SOTTOCATEGORIE) {
-          // Se la cache locale ha pochi movimenti (< 10), integra i movimenti storici di esempio
-          if (parsed.MOVIMENTI.length < 10) {
-            const existingIds = new Set(parsed.MOVIMENTI.map((m: any) => m.id));
-            INITIAL_DATABASE.MOVIMENTI.forEach(m => {
-              if (!existingIds.has(m.id)) {
-                parsed.MOVIMENTI.push(m);
-              }
-            });
-          }
           if (!parsed.SCADENZE || parsed.SCADENZE.length === 0) {
-            parsed.SCADENZE = INITIAL_DATABASE.SCADENZE;
+            parsed.SCADENZE = INITIAL_DATABASE.SCADENZE || [];
           }
-          // Idrata sottocategorie mancanti (es. finanziamenti, prestiti e ristrutturazione)
-          INITIAL_DATABASE.SOTTOCATEGORIE.forEach((sub: any) => {
-            if (!parsed.SOTTOCATEGORIE.some((s: any) => s.id === sub.id)) {
-              parsed.SOTTOCATEGORIE.push(sub);
-            }
-          });
-          // Assicura classificazione per tutte le sottocategorie (GUADAGNI, SPESE_ESSENZIALI, SPESE_EXTRA)
+          // Assicura classificazione per tutte le sottocategorie esistenti dell'utente (senza aggiungere o idratare mock esterni)
           parsed.SOTTOCATEGORIE.forEach((sub: any) => {
             if (!sub.classificazione) {
               sub.classificazione = getSubcategoryClassification(sub);
@@ -1186,30 +1262,18 @@ function loadLocalCache(): DatabaseSchema {
           // Rimuove eventuali movimenti mock legati ai vecchi progetti di test
           const mockMovIds = new Set(['mov-mutuo-curr', 'mov-auto-curr', 'mov-ristruttura-curr']);
           parsed.MOVIMENTI = (parsed.MOVIMENTI || []).filter((m: any) => !mockMovIds.has(m.id));
-          // Se nessun movimento ha tag, semina i movimenti con tag "Vacanza a Napoli"
-          const hasAnyTags = parsed.MOVIMENTI.some((m: any) => m.tag || (m.tags && m.tags.length > 0));
-          if (!hasAnyTags) {
-            const existingIds = new Set(parsed.MOVIMENTI.map((m: any) => m.id));
-            INITIAL_DATABASE.MOVIMENTI.filter(m => m.tag).forEach(m => {
-              if (!existingIds.has(m.id)) {
-                parsed.MOVIMENTI.unshift(m);
-              } else {
-                const target = parsed.MOVIMENTI.find((x: any) => x.id === m.id);
-                if (target) {
-                  target.tag = m.tag;
-                  target.tags = m.tags;
-                }
-              }
-            });
-          }
+
           if (!parsed.MODELLI || parsed.MODELLI.length === 0) {
-            parsed.MODELLI = INITIAL_DATABASE.MODELLI;
+            parsed.MODELLI = INITIAL_DATABASE.MODELLI || [];
+          }
+          if (!parsed.RICORRENZE || parsed.RICORRENZE.length === 0) {
+            parsed.RICORRENZE = INITIAL_DATABASE.RICORRENZE || [];
           }
           if (parsed.NOTE === undefined || parsed.NOTE === null) {
             parsed.NOTE = INITIAL_DATABASE.NOTE || [];
           }
           if (parsed.TAGS === undefined || parsed.TAGS === null) {
-            parsed.TAGS = INITIAL_DATABASE.TAGS;
+            parsed.TAGS = INITIAL_DATABASE.TAGS || [];
           }
           if (!parsed.REPORT_SETTIMANALI) {
             parsed.REPORT_SETTIMANALI = [];
@@ -1277,6 +1341,9 @@ export function initFirestore(): void {
           if (cloudData && cloudData.CONTI && cloudData.MOVIMENTI) {
             if (!cloudData.TAGS) {
               cloudData.TAGS = INITIAL_DATABASE.TAGS || [];
+            }
+            if (!cloudData.RICORRENZE) {
+              cloudData.RICORRENZE = INITIAL_DATABASE.RICORRENZE || [];
             }
             if (!cloudData.REPORT_SETTIMANALI) {
               cloudData.REPORT_SETTIMANALI = [];

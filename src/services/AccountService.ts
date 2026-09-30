@@ -1,5 +1,5 @@
 import { DB, persistDB, generateHumanID, generateUUID } from './store';
-import { Account, Fund, AccountForecast, DailyForecastPoint } from '../types';
+import { Account, Fund, AccountForecast, DailyForecastPoint, Movement } from '../types';
 import { formatCurrency } from '../utils/formatters';
 import { getFinancialPeriodInfo, getCurrentFinancialMonth } from '../utils/financialDate';
 
@@ -961,6 +961,111 @@ export const AccountService = {
       totalReal,
       totalDifference,
       allReconciled
+    };
+  },
+
+  // Strumento di correzione e allineamento saldo da banca (genera movimento di rettifica senza sottocategoria)
+  async reconcileAccountWithRealBalance(
+    entityId: string,
+    realBalance: number,
+    options?: {
+      date?: string;
+      description?: string;
+      note?: string;
+    }
+  ): Promise<{
+    movementCreated: Movement | null;
+    previousCalculatedBalance: number;
+    newBalance: number;
+    difference: number;
+    isExactMatch: boolean;
+    entityName: string;
+  }> {
+    const isAccount = DB.CONTI.some(c => c.id === entityId || c.conto_id === entityId);
+    const account = isAccount 
+      ? DB.CONTI.find(c => c.id === entityId || c.conto_id === entityId)
+      : null;
+    const fund = !isAccount
+      ? (DB.FONDI || []).find(f => f.id === entityId || f.fondo_id === entityId)
+      : null;
+
+    if (!account && !fund) {
+      throw new Error(`Conto o fondo con ID "${entityId}" non trovato.`);
+    }
+
+    const targetEntity = account || fund!;
+    const entityName = account ? account.nome_conto : fund!.nome_fondo;
+    const effectiveEntityId = targetEntity.id;
+
+    const opDateStr = options?.date || formatYMD(new Date());
+    const opDateObj = new Date(opDateStr);
+
+    // Calcolo del saldo contabile effettivo alla data dell'operazione
+    const previousCalculatedBalance = this.calculateBalanceAtDate(effectiveEntityId, isNaN(opDateObj.getTime()) ? new Date() : opDateObj);
+    const targetReal = Math.round(realBalance * 100) / 100;
+    const difference = Math.round((targetReal - previousCalculatedBalance) * 100) / 100;
+
+    let movementCreated: Movement | null = null;
+
+    // Se c'è una discrepanza, generiamo il movimento contabile di correzione
+    if (Math.abs(difference) >= 0.005) {
+      const nowIso = new Date().toISOString();
+      const isPositiveDiff = difference > 0;
+      const tipologia: 'ENTRATA' | 'USCITA' = isPositiveDiff ? 'ENTRATA' : 'USCITA';
+      const importo = Math.abs(difference);
+
+      const defaultDesc = options?.description && options.description.trim()
+        ? options.description.trim()
+        : `Riconciliazione saldo (${isPositiveDiff ? 'Entrata di rettifica' : 'Uscita di rettifica'})`;
+
+      const defaultNote = options?.note && options.note.trim()
+        ? options.note.trim()
+        : `Correzione automatica del saldo da estratto conto bancario. Saldo precedente: ${formatCurrency(previousCalculatedBalance)}, Saldo reale inserito: ${formatCurrency(targetReal)} (Rettifica: ${formatCurrency(difference, { showSign: true })})`;
+
+      movementCreated = {
+        id: generateUUID(),
+        movimento_id: generateHumanID('MOV', 'MOVIMENTI'),
+        data: opDateStr,
+        descrizione: defaultDesc,
+        importo: importo,
+        tipologia: tipologia,
+        conto_origine: effectiveEntityId,
+        conto_destinazione: null,
+        sottocategoria_id: '', // Rigorosamente senza sottocategoria (Rettifica Saldo)
+        natura: 'VARIABILE',
+        necessita: 'DEVO',
+        progetto_id: null,
+        tag: 'Riconciliazione',
+        tags: ['Riconciliazione', 'Rettifica Saldo'],
+        fondo_id: isAccount ? null : effectiveEntityId,
+        stato: 'CONFERMATO',
+        non_contabilizzato: false,
+        origine_dati: 'MANUALE',
+        note: defaultNote,
+        allegati: [],
+        created_at: nowIso,
+        updated_at: nowIso
+      };
+
+      DB.MOVIMENTI.unshift(movementCreated);
+    }
+
+    // Aggiorniamo sempre anche il saldo_reale memorizzato sull'entità
+    targetEntity.saldo_reale = targetReal;
+    targetEntity.updated_at = new Date().toISOString();
+
+    await persistDB();
+
+    // Ricalcoliamo il nuovo saldo effettivo
+    const newBalance = this.calculateBalanceAtDate(effectiveEntityId, new Date());
+
+    return {
+      movementCreated,
+      previousCalculatedBalance,
+      newBalance,
+      difference,
+      isExactMatch: Math.abs(difference) < 0.005,
+      entityName
     };
   }
 };

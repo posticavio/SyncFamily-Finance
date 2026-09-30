@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { Movement, Subcategory, Account, Fund } from '../types';
 import { CategoryIcon } from './CategoryIcon';
 import { formatDateIT, getAmountDisplay } from '../utils/formatters';
-import { Copy, Trash2, ArrowRight, Landmark, Shield, Hash, Check, Filter, Clock, CalendarClock, Paperclip } from 'lucide-react';
+import { Copy, Trash2, ArrowRight, Landmark, Shield, Hash, Check, Filter, Clock, CalendarClock, Paperclip, Repeat } from 'lucide-react';
 
 interface TransactionItemProps {
   movement: Movement;
@@ -262,6 +262,15 @@ export const TransactionItem: React.FC<TransactionItemProps> = ({
               {movement.natura === 'FISSA' && (
                 <span className="hidden sm:inline-block px-1.5 py-0.2 rounded text-[9px] font-medium bg-slate-100 dark:bg-[#2A2A2E] text-slate-500 dark:text-[#8E8E93] shrink-0">
                   Fissa
+                </span>
+              )}
+              {(movement.id_ricorrenza || movement.origine_dati === 'RICORRENZA') && (
+                <span 
+                  className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md text-[9px] font-bold bg-[#E31B23]/10 dark:bg-[#E31B23]/20 text-[#E31B23] border border-[#E31B23]/30 shrink-0"
+                  title="Movimento facente parte di una ricorrenza o rata"
+                >
+                  <Repeat size={9} strokeWidth={2.5} />
+                  <span>{movement.numero_rata ? `Rata #${movement.numero_rata}` : 'Ricorrenza'}</span>
                 </span>
               )}
               {movement.allegati && movement.allegati.length > 0 && (

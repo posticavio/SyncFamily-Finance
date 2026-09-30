@@ -634,15 +634,15 @@ export const MonthlyMacroBreakdownChart: React.FC<MonthlyMacroBreakdownChartProp
       // Top categorie per drilldown
       const topEssenziali = Object.values(essenzialiSubBreakdown)
         .sort((a, b) => b.amount - a.amount)
-        .slice(0, 5);
+        .slice(0, 10);
 
       const topExtra = Object.values(extraSubBreakdown)
         .sort((a, b) => b.amount - a.amount)
-        .slice(0, 5);
+        .slice(0, 10);
 
       const topGuadagni = Object.values(guadagniSubBreakdown)
         .sort((a, b) => b.amount - a.amount)
-        .slice(0, 5);
+        .slice(0, 10);
 
       result.push({
         monthKey,

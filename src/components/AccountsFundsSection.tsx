@@ -32,6 +32,7 @@ interface AccountsFundsSectionProps {
   onOpenAccountsModal: () => void;
   onOpenNewTransaction: () => void;
   onOpenReconciliation?: (accountId?: string) => void;
+  onOpenBalanceCorrection?: (accountId?: string) => void;
   onSelectAccount?: (account: AccountForecast) => void;
 }
 
@@ -42,6 +43,7 @@ export const AccountsFundsSection: React.FC<AccountsFundsSectionProps> = ({
   onOpenAccountsModal,
   onOpenNewTransaction,
   onOpenReconciliation,
+  onOpenBalanceCorrection,
   onSelectAccount
 }) => {
   const [filterTab, setFilterTab] = useState<'ALL' | 'ACCOUNTS' | 'FUNDS' | 'DIFF'>('ALL');
@@ -208,6 +210,17 @@ export const AccountsFundsSection: React.FC<AccountsFundsSectionProps> = ({
               <span>Compatta</span>
             </button>
           </div>
+
+          {onOpenBalanceCorrection && (
+            <button
+              onClick={() => onOpenBalanceCorrection()}
+              className="px-3 py-1.5 rounded-xl bg-[#E31B23]/10 hover:bg-[#E31B23]/20 text-[#E31B23] text-xs font-semibold flex items-center gap-1.5 transition-colors border border-[#E31B23]/30 cursor-pointer shadow-2xs"
+              title="Allinea e correggi saldo conto con estratto banca"
+            >
+              <Sparkles size={13} />
+              <span>Correggi Saldo</span>
+            </button>
+          )}
 
           {onOpenReconciliation && (
             <button

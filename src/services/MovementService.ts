@@ -77,6 +77,8 @@ export const MovementService = {
     tags?: string[];
     fondo_id?: string | null;
     non_contabilizzato?: boolean;
+    id_ricorrenza?: string | null;
+    numero_rata?: number | null;
     note?: string;
     allegati?: MovementAttachment[];
     origine_dati?: 'MANUALE' | 'PIANIFICATO' | 'IMPORTAZIONE' | 'RICORRENZA';
@@ -118,7 +120,9 @@ export const MovementService = {
       fondo_id: data.fondo_id || null,
       stato: 'CONFERMATO',
       non_contabilizzato: !!data.non_contabilizzato,
-      origine_dati: data.origine_dati || 'MANUALE',
+      origine_dati: data.origine_dati || (data.id_ricorrenza ? 'RICORRENZA' : 'MANUALE'),
+      id_ricorrenza: data.id_ricorrenza || null,
+      numero_rata: data.numero_rata || null,
       note: data.note ? data.note.trim() : '',
       allegati: data.allegati || [],
       created_at: nowIso,

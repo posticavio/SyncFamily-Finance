@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import {
   Upload,
@@ -26,12 +26,14 @@ import {
   Filter,
   Zap,
   Loader2,
-  ArrowLeftRight
+  ArrowLeftRight,
+  CreditCard
 } from 'lucide-react';
 import { Account, Fund, Subcategory, Movement, MovementType } from '../types';
 import {
   parseBankStatement,
   getDemoBankStatement,
+  getDemoCreditCardStatement,
   StatementParseResult,
   ParsedStatementRow
 } from '../utils/statementParser';
@@ -40,6 +42,7 @@ import {
   ReconciliationItem,
   StatementReconciliationReport
 } from '../services/ReconciliationService';
+import { CategoryService } from '../services/CategoryService';
 import { formatCurrency, formatDateIT } from '../utils/formatters';
 
 const loadPdfJs = (): Promise<any> => {
@@ -150,8 +153,93 @@ export const StatementReconciliationModal: React.FC<StatementReconciliationModal
   const [activeDestPickerItemId, setActiveDestPickerItemId] = useState<string | null>(null);
   const [activeTransferConfigItemId, setActiveTransferConfigItemId] = useState<string | null>(null);
 
+  // Gestione sottocategorie con aggiornamento locale dinamico
+  const [localSubcategories, setLocalSubcategories] = useState<Subcategory[]>(subcategories);
+
+  useEffect(() => {
+    setLocalSubcategories(subcategories);
+  }, [subcategories]);
+
+  // Raggruppamento ed ordinamento alfabetico per Categoria Padre
+  const groupedSubcategories = useMemo(() => {
+    const groups: Record<string, Subcategory[]> = {};
+    for (const sub of localSubcategories) {
+      if (sub.attiva === false) continue;
+      const parent = sub.categoria_padre?.trim() || 'Altro';
+      if (!groups[parent]) groups[parent] = [];
+      groups[parent].push(sub);
+    }
+
+    const sortedParents = Object.keys(groups).sort((a, b) => a.localeCompare(b));
+    return sortedParents.map(parent => ({
+      parent,
+      items: groups[parent].sort((a, b) => a.nome.localeCompare(b.nome))
+    }));
+  }, [localSubcategories]);
+
+  // Stato popover ricerca sottocategoria
+  const [activeSubPickerItemId, setActiveSubPickerItemId] = useState<string | null>(null);
+  const [subPickerSearchQuery, setSubPickerSearchQuery] = useState<string>('');
+
+  // Modale per creazione rapida di una nuova sottocategoria direttamente dalla riconciliazione
+  const [isQuickSubModalOpen, setIsQuickSubModalOpen] = useState<boolean>(false);
+  const [quickSubTargetItemId, setQuickSubTargetItemId] = useState<string | null>(null);
+  const [quickSubName, setQuickSubName] = useState<string>('');
+  const [quickSubParent, setQuickSubParent] = useState<string>('Altro');
+  const [quickSubTipo, setQuickSubTipo] = useState<MovementType>('USCITA');
+  const [isCreatingSub, setIsCreatingSub] = useState<boolean>(false);
+
+  const handleOpenQuickCreateSub = (itemId: string, defaultName?: string, defaultTipo?: MovementType) => {
+    setQuickSubTargetItemId(itemId);
+    setQuickSubName(defaultName || '');
+    setQuickSubParent('Altro');
+    setQuickSubTipo(defaultTipo || 'USCITA');
+    setIsQuickSubModalOpen(true);
+  };
+
+  const handleSaveQuickSubcategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickSubName.trim() || isCreatingSub) return;
+
+    try {
+      setIsCreatingSub(true);
+      const created = await CategoryService.createSubcategory({
+        nome: quickSubName.trim(),
+        categoria_padre: quickSubParent.trim() || (quickSubTipo === 'ENTRATA' ? 'Entrate Varie' : 'Spese Varie'),
+        tipo: quickSubTipo
+      });
+
+      // Aggiungi alla lista locale
+      setLocalSubcategories(prev => [...prev, created]);
+
+      // Se c'è un item target, assegna subito la nuova sottocategoria
+      if (quickSubTargetItemId) {
+        setItemsState(prev => ({
+          ...prev,
+          [quickSubTargetItemId]: {
+            ...prev[quickSubTargetItemId],
+            selectedSubcategoryId: created.id
+          }
+        }));
+      }
+
+      setIsQuickSubModalOpen(false);
+      setQuickSubName('');
+      setQuickSubParent('');
+      setActiveSubPickerItemId(null);
+
+      // Notifica l'app globale per ricaricare le sottocategorie
+      onSuccess();
+    } catch (err: any) {
+      console.error('Errore creazione sottocategoria rapida:', err);
+      alert(err?.message || 'Impossibile creare la sottocategoria.');
+    } finally {
+      setIsCreatingSub(false);
+    }
+  };
+
   const isTransferSub = (subId: string) => {
-    const sub = subcategories.find(s => s.id === subId);
+    const sub = localSubcategories.find(s => s.id === subId);
     if (!sub) return false;
     return sub.tipo === 'GIROCONTO' || 
            sub.categoria_padre?.toLowerCase().includes('trasferiment') || 
@@ -347,11 +435,21 @@ export const StatementReconciliationModal: React.FC<StatementReconciliationModal
     }, 50);
   };
 
-  // Carica estratto conto dimostrativo realistico
+  // Carica estratto conto dimostrativo bancario
   const handleLoadDemo = () => {
     const demo = getDemoBankStatement();
     setRawText(demo);
-    setFileName('estratto_conto_demo.csv');
+    setFileName('estratto_conto_bancario_demo.csv');
+    const parsed = parseBankStatement(demo);
+    setParseResult(parsed);
+    runAnalysis(parsed.rows, selectedAccountId, dateToleranceDays);
+  };
+
+  // Carica estratto conto dimostrativo di Carta di Credito
+  const handleLoadCreditCardDemo = () => {
+    const demo = getDemoCreditCardStatement();
+    setRawText(demo);
+    setFileName('estratto_conto_carta_credito_demo.csv');
     const parsed = parseBankStatement(demo);
     setParseResult(parsed);
     runAnalysis(parsed.rows, selectedAccountId, dateToleranceDays);
@@ -606,15 +704,29 @@ export const StatementReconciliationModal: React.FC<StatementReconciliationModal
           </div>
 
           {/* Azione rapida Demo */}
-          <div className="flex items-end">
-            <button
-              type="button"
-              onClick={handleLoadDemo}
-              className="w-full px-3 py-2 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/80 text-indigo-700 dark:text-indigo-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all active:scale-95"
-            >
-              <Sparkles size={14} className="text-indigo-600 dark:text-indigo-400" />
-              <span>Prova Estratto Dimostrativo</span>
-            </button>
+          <div className="flex flex-col gap-1.5 justify-end">
+            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Esempi Dimostrativi:</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleLoadDemo}
+                className="flex-1 px-2.5 py-1.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/80 text-indigo-700 dark:text-indigo-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                title="Carica un estratto conto bancario di esempio"
+              >
+                <Sparkles size={13} className="text-indigo-600 dark:text-indigo-400" />
+                <span>Demo Banca</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleLoadCreditCardDemo}
+                className="flex-1 px-2.5 py-1.5 rounded-xl bg-purple-50/70 dark:bg-purple-950/40 hover:bg-purple-100 dark:hover:bg-purple-900/60 border border-purple-200 dark:border-purple-800/80 text-purple-700 dark:text-purple-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                title="Carica un estratto conto di carta di credito con esercenti e preautorizzazioni"
+              >
+                <CreditCard size={13} className="text-purple-600 dark:text-purple-400" />
+                <span>Demo Carta Credito</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1158,9 +1270,10 @@ export const StatementReconciliationModal: React.FC<StatementReconciliationModal
                                 </span>
                               </div>
 
-                              {/* Per i mancanti: selettore rapido categoria e tasto inserisci */}
+                              {/* Per i mancanti: selettore rapido categoria con raggruppamento, ricerca e pulsante nuova */}
                               {(isMissing || isPlanned) && (
-                                <div className="flex flex-wrap items-center gap-1.5 justify-end">
+                                <div className="flex flex-wrap items-center gap-1.5 justify-end relative">
+                                  {/* Select Raggruppata per Categoria Padre e Ordinata Alfabeticamente */}
                                   <select
                                     value={state.selectedSubcategoryId}
                                     onChange={e => {
@@ -1173,17 +1286,148 @@ export const StatementReconciliationModal: React.FC<StatementReconciliationModal
                                         }
                                       }));
                                     }}
-                                    className="text-[11px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 max-w-[140px] truncate"
-                                    title="Scegli sottocategoria per registrare questo movimento"
+                                    className="text-[11px] font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 max-w-[155px] truncate"
+                                    title="Scegli sottocategoria raggruppata per categoria padre"
                                   >
-                                    {subcategories
-                                      .filter(sub => sub.attiva !== false && (sub.tipo === item.statementRow.type || isTransferSub(sub.id)))
-                                      .map(sub => (
-                                        <option key={sub.id} value={sub.id}>
-                                          {sub.nome} ({sub.categoria_padre})
-                                        </option>
-                                      ))}
+                                    {groupedSubcategories.map(group => {
+                                      const filteredSubs = group.items.filter(
+                                        sub => sub.tipo === item.statementRow.type || isTransferSub(sub.id)
+                                      );
+                                      if (filteredSubs.length === 0) return null;
+                                      return (
+                                        <optgroup key={group.parent} label={`📁 ${group.parent}`}>
+                                          {filteredSubs.map(sub => (
+                                            <option key={sub.id} value={sub.id}>
+                                              {sub.nome}
+                                            </option>
+                                          ))}
+                                        </optgroup>
+                                      );
+                                    })}
                                   </select>
+
+                                  {/* Bottone Tasto Cerca Popover */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (activeSubPickerItemId === item.id) {
+                                        setActiveSubPickerItemId(null);
+                                      } else {
+                                        setActiveSubPickerItemId(item.id);
+                                        setSubPickerSearchQuery('');
+                                      }
+                                    }}
+                                    className={`p-1.5 rounded-xl text-xs font-semibold flex items-center justify-center transition-all border ${
+                                      activeSubPickerItemId === item.id
+                                        ? 'bg-indigo-600 text-white border-indigo-700'
+                                        : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                                    }`}
+                                    title="Cerca tra tutte le sottocategorie"
+                                  >
+                                    <Search size={13} />
+                                  </button>
+
+                                  {/* Bottone Crea Nuova Sottocategoria On The Fly */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenQuickCreateSub(item.id, '', item.statementRow.type)}
+                                    className="px-2 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-[11px] font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+                                    title="Crea una nuova sottocategoria direttamente da qui"
+                                  >
+                                    <Plus size={12} strokeWidth={2.5} />
+                                    <span>Nuova</span>
+                                  </button>
+
+                                  {/* Popover Ricerca Sottocategoria */}
+                                  {activeSubPickerItemId === item.id && (
+                                    <div className="absolute right-0 top-full mt-1.5 w-72 bg-white dark:bg-[#1C1C1E] rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 p-3 z-50 space-y-2.5 animate-in fade-in zoom-in-95 duration-150 text-left">
+                                      <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800">
+                                        <span className="text-[11px] font-bold text-slate-800 dark:text-white flex items-center gap-1">
+                                          <Search size={12} className="text-indigo-500" />
+                                          <span>Cerca Sottocategoria</span>
+                                        </span>
+                                        <button
+                                          onClick={() => setActiveSubPickerItemId(null)}
+                                          className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                        >
+                                          <X size={13} />
+                                        </button>
+                                      </div>
+
+                                      <div className="relative">
+                                        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                                        <input
+                                          type="text"
+                                          value={subPickerSearchQuery}
+                                          onChange={e => setSubPickerSearchQuery(e.target.value)}
+                                          placeholder="Scrivi per filtrare o creare..."
+                                          autoFocus
+                                          className="w-full pl-8 pr-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-indigo-500 font-medium"
+                                        />
+                                      </div>
+
+                                      <div className="max-h-52 overflow-y-auto space-y-2 pr-1 no-scrollbar text-xs">
+                                        {groupedSubcategories.map(group => {
+                                          const matches = group.items.filter(sub => {
+                                            if (sub.tipo !== item.statementRow.type && !isTransferSub(sub.id)) return false;
+                                            if (!subPickerSearchQuery.trim()) return true;
+                                            const q = subPickerSearchQuery.toLowerCase().trim();
+                                            return sub.nome.toLowerCase().includes(q) || group.parent.toLowerCase().includes(q);
+                                          });
+
+                                          if (matches.length === 0) return null;
+
+                                          return (
+                                            <div key={group.parent} className="space-y-1">
+                                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1">
+                                                📁 {group.parent}
+                                              </span>
+                                              <div className="space-y-0.5">
+                                                {matches.map(sub => (
+                                                  <button
+                                                    key={sub.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setItemsState(prev => ({
+                                                        ...prev,
+                                                        [item.id]: {
+                                                          ...prev[item.id],
+                                                          selectedSubcategoryId: sub.id
+                                                        }
+                                                      }));
+                                                      setActiveSubPickerItemId(null);
+                                                    }}
+                                                    className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between transition-colors ${
+                                                      state.selectedSubcategoryId === sub.id
+                                                        ? 'bg-indigo-600 text-white font-bold'
+                                                        : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200'
+                                                    }`}
+                                                  >
+                                                    <span>{sub.nome}</span>
+                                                    {state.selectedSubcategoryId === sub.id && <Check size={12} />}
+                                                  </button>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+
+                                        {subPickerSearchQuery.trim() && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              handleOpenQuickCreateSub(item.id, subPickerSearchQuery.trim(), item.statementRow.type);
+                                              setActiveSubPickerItemId(null);
+                                            }}
+                                            className="w-full mt-1.5 p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 font-bold text-xs flex items-center justify-center gap-1.5 border border-indigo-200 dark:border-indigo-800 transition-colors"
+                                          >
+                                            <Plus size={13} />
+                                            <span>Crea "{subPickerSearchQuery.trim()}"</span>
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
 
                                   {/* Bottone Trasferisci Da/A sempre visibile accanto alla sottocategoria */}
                                   <button
@@ -1277,6 +1521,143 @@ export const StatementReconciliationModal: React.FC<StatementReconciliationModal
             </div>
           )}
         </div>
+
+        {/* Modal Creazione Rapida Nuova Sottocategoria "On The Fly" */}
+        {isQuickSubModalOpen && (
+          <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+            <div
+              className="bg-white dark:bg-[#1C1C1E] w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 p-5 sm:p-6 space-y-4"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                    <Plus size={18} strokeWidth={2.5} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Crea Nuova Sottocategoria
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Disponibile subito per la riconciliazione e per tutta l'app
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsQuickSubModalOpen(false)}
+                  className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveQuickSubcategory} className="space-y-4">
+                {/* Nome Sottocategoria */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Nome Sottocategoria *
+                  </label>
+                  <input
+                    type="text"
+                    value={quickSubName}
+                    onChange={e => setQuickSubName(e.target.value)}
+                    placeholder="Es. Spese Mediche Veterinarie"
+                    autoFocus
+                    required
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-900 dark:text-white outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                {/* Categoria Padre */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Categoria Padre (Macro-Gruppo) *
+                  </label>
+                  <input
+                    type="text"
+                    value={quickSubParent}
+                    onChange={e => setQuickSubParent(e.target.value)}
+                    placeholder="Es. Salute & Medico, Casa, Auto..."
+                    required
+                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-900 dark:text-white outline-none focus:border-indigo-500 mb-2"
+                  />
+
+                  {/* Suggerimenti Categoria Padre */}
+                  <div className="flex flex-wrap gap-1">
+                    {['Alimentari', 'Casa & Utenze', 'Salute & Medico', 'Trasporti & Auto', 'Svago & Tempo Libero', 'Lavoro', 'Ristorazione', 'Shopping & Vestiario', 'Informatica & Tech'].map(cat => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setQuickSubParent(cat)}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-colors ${
+                          quickSubParent === cat
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Tipologia */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Tipologia Movimento
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setQuickSubTipo('USCITA')}
+                      className={`py-1.5 rounded-xl text-xs font-bold transition-colors ${
+                        quickSubTipo === 'USCITA'
+                          ? 'bg-rose-600 text-white shadow-xs'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                      }`}
+                    >
+                      USCITA (-)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQuickSubTipo('ENTRATA')}
+                      className={`py-1.5 rounded-xl text-xs font-bold transition-colors ${
+                        quickSubTipo === 'ENTRATA'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                      }`}
+                    >
+                      ENTRATA (+)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Footer Modale */}
+                <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsQuickSubModalOpen(false)}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  >
+                    Annulla
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!quickSubName.trim() || isCreatingSub}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    {isCreatingSub ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <Check size={14} strokeWidth={2.5} />
+                    )}
+                    <span>Crea e Seleziona Subito</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {/* Footer Modale */}
         <div className="p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-850/40 flex items-center justify-between gap-3">

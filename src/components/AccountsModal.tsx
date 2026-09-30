@@ -25,7 +25,8 @@ import {
   Wallet,
   Shield,
   Clock,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Sparkles
 } from 'lucide-react';
 
 interface AccountsModalProps {
@@ -36,6 +37,7 @@ interface AccountsModalProps {
   onRefresh: () => void;
   onOpenCreateAccount?: () => void;
   onOpenReconciliation?: (accountId?: string) => void;
+  onOpenBalanceCorrection?: (accountId?: string) => void;
   onSelectAccount?: (account: AccountForecast) => void;
 }
 
@@ -47,6 +49,7 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
   onRefresh,
   onOpenCreateAccount,
   onOpenReconciliation,
+  onOpenBalanceCorrection,
   onSelectAccount
 }) => {
   const [editingRealId, setEditingRealId] = useState<string | null>(null);
@@ -240,6 +243,20 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
 
               {/* Bottoni Aggiungi Conto & Fondo & Riconciliazione */}
               <div className="flex items-center gap-2 flex-wrap">
+                {onOpenBalanceCorrection && (
+                  <button
+                    onClick={() => {
+                      haptics.tap();
+                      onClose();
+                      onOpenBalanceCorrection();
+                    }}
+                    className="px-3 py-1.5 bg-[#E31B23]/10 hover:bg-[#E31B23]/20 text-[#E31B23] border border-[#E31B23]/30 rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                    title="Allinea il saldo all'estratto conto reale bancario e genera movimento contabile"
+                  >
+                    <Sparkles size={14} />
+                    <span>Correggi Saldo</span>
+                  </button>
+                )}
                 {onOpenReconciliation && (
                   <button
                     onClick={() => {
@@ -434,6 +451,23 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
                             >
                               <Trash2 size={13} />
                             </button>
+
+                            {/* Bottone Correzione Rapida Saldo */}
+                            {onOpenBalanceCorrection && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  haptics.tap();
+                                  onClose();
+                                  onOpenBalanceCorrection(acc.conto_id);
+                                }}
+                                title="Rettifica e allinea saldo conto bancario"
+                                className="px-2 py-1 rounded-xl bg-[#E31B23]/10 border border-[#E31B23]/30 text-[#E31B23] hover:bg-[#E31B23]/20 text-[11px] font-semibold flex items-center gap-1 transition-all cursor-pointer"
+                              >
+                                <Sparkles size={11} />
+                                <span>Correggi Saldo</span>
+                              </button>
+                            )}
 
                             {/* Editing Saldo Reale Inline */}
                             {isEditingReal ? (
@@ -684,6 +718,23 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
                             >
                               <Trash2 size={13} />
                             </button>
+
+                            {/* Bottone Correzione Rapida Saldo */}
+                            {onOpenBalanceCorrection && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  haptics.tap();
+                                  onClose();
+                                  onOpenBalanceCorrection(fund.conto_id);
+                                }}
+                                title="Rettifica e allinea saldo fondo"
+                                className="px-2 py-1 rounded-xl bg-[#E31B23]/10 border border-[#E31B23]/30 text-[#E31B23] hover:bg-[#E31B23]/20 text-[11px] font-semibold flex items-center gap-1 transition-all cursor-pointer"
+                              >
+                                <Sparkles size={11} />
+                                <span>Correggi Saldo</span>
+                              </button>
+                            )}
 
                             {isEditingReal ? (
                               <div className="flex items-center gap-1">

@@ -27,7 +27,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Sparkles
 } from 'lucide-react';
 
 interface AccountDetailModalProps {
@@ -41,6 +42,7 @@ interface AccountDetailModalProps {
   onSelectMovement?: (movement: Movement) => void;
   onOpenNewTransactionForAccount?: (accountId: string) => void;
   onOpenReconciliation?: (accountId: string) => void;
+  onOpenBalanceCorrection?: (accountId: string) => void;
   onEditAccount?: (accountId: string) => void;
 }
 
@@ -87,6 +89,7 @@ export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
   onSelectMovement,
   onOpenNewTransactionForAccount,
   onOpenReconciliation,
+  onOpenBalanceCorrection,
   onEditAccount
 }) => {
   // Toggle con un solo click se includere quelle programmate o meno
@@ -580,6 +583,22 @@ export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
                 >
                   <Plus size={14} strokeWidth={2.5} />
                   <span>Nuovo Movimento</span>
+                </button>
+              )}
+
+              {onOpenBalanceCorrection && (
+                <button
+                  type="button"
+                  id="btn-account-balance-correct"
+                  onClick={() => {
+                    haptics.tap();
+                    onOpenBalanceCorrection(account.id || account.conto_id);
+                  }}
+                  className="p-1.5 sm:px-3 sm:py-2 rounded-full text-xs font-semibold bg-[#E31B23]/10 hover:bg-[#E31B23]/20 text-[#E31B23] border border-[#E31B23]/30 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                  title="Correggi e allinea saldo con estratto conto banca (genera rettifica)"
+                >
+                  <Sparkles size={14} />
+                  <span className="hidden md:inline">Correggi Saldo</span>
                 </button>
               )}
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { ControlAlert } from '../types';
-import { X, AlertTriangle, ShieldCheck, CheckCircle2, ArrowRight, FileSpreadsheet } from 'lucide-react';
+import { X, AlertTriangle, ShieldCheck, CheckCircle2, ArrowRight, FileSpreadsheet, Sparkles } from 'lucide-react';
 import { PlannedService } from '../services/PlannedService';
 import { DeadlineService } from '../services/DeadlineService';
 import { AccountService } from '../services/AccountService';
@@ -11,6 +11,7 @@ interface ControlCenterModalProps {
   alerts: ControlAlert[];
   onRefresh: () => void;
   onOpenReconciliation?: (accountId?: string) => void;
+  onOpenBalanceCorrection?: (accountId?: string) => void;
 }
 
 export const ControlCenterModal: React.FC<ControlCenterModalProps> = ({
@@ -18,7 +19,8 @@ export const ControlCenterModal: React.FC<ControlCenterModalProps> = ({
   onClose,
   alerts,
   onRefresh,
-  onOpenReconciliation
+  onOpenReconciliation,
+  onOpenBalanceCorrection
 }) => {
   if (!isOpen) return null;
 
@@ -135,6 +137,19 @@ export const ControlCenterModal: React.FC<ControlCenterModalProps> = ({
 
                     {alert.tipo === 'DIFFERENZA_SALDO' && alert.id_riferimento && (
                       <div className="flex items-center gap-2">
+                        {onOpenBalanceCorrection && (
+                          <button
+                            onClick={() => {
+                              onClose();
+                              onOpenBalanceCorrection(alert.id_riferimento);
+                            }}
+                            className="px-3 py-1.5 bg-[#E31B23] hover:bg-[#c9151c] text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                            title="Inserisci saldo reale e genera movimento di rettifica automatico"
+                          >
+                            <Sparkles size={13} />
+                            <span>Correggi Saldo (Rettifica)</span>
+                          </button>
+                        )}
                         {onOpenReconciliation && (
                           <button
                             onClick={() => {

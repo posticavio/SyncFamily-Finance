@@ -236,6 +236,8 @@ export interface Movement {
   non_contabilizzato?: boolean; // Se true, movimento originariamente non contabilizzato dalla banca ma considerato già contabilizzato con addebito certo
   origine_dati: 'MANUALE' | 'PIANIFICATO' | 'IMPORTAZIONE' | 'RICORRENZA';
   id_importazione?: string | null;
+  id_ricorrenza?: string | null; // ID della regola di ricorrenza collegata
+  numero_rata?: number | null; // Numero progressivo rata (es. rata 3 di 12)
   note?: string;
   allegati?: MovementAttachment[];
   created_at: string;
@@ -257,17 +259,30 @@ export interface Planned {
   note?: string;
 }
 
+export type RecurrenceFrequency = 'MENSILE' | 'BIMESTRALE' | 'TRIMESTRALE' | 'SEMESTRALE' | 'ANNUALE' | 'SETTIMANALE' | 'QUATTORDICINALE';
+export type RecurrenceLimitType = 'ILLIMITATA' | 'TOT_VOLTE' | 'DATA_FINE';
+
 export interface Recurrence {
   id: string;
   ricorrenza_id: string; // E.g. RIC00001
   nome: string;
-  frequenza: 'MENSILE' | 'BIMESTRALE' | 'TRIMESTRALE' | 'ANNUALE';
-  giorno_esecuzione: number;
+  frequenza: RecurrenceFrequency;
+  giorno_esecuzione: number; // 1-31 (o 1-7 per settimanale)
   importo: number;
   tipologia: MovementType;
   conto_id: string;
   sottocategoria_id: string;
   attiva: boolean;
+  tipo_limite?: RecurrenceLimitType;
+  ripetizioni_totali?: number; // Es. 12 rate / 12 mesi
+  ripetizioni_eseguite?: number; // Es. 4 già saldate
+  data_inizio?: string; // YYYY-MM-DD
+  data_fine?: string; // YYYY-MM-DD
+  prossima_data?: string; // YYYY-MM-DD
+  genera_pianificato_automatico?: boolean;
+  note?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface TransactionTemplate {

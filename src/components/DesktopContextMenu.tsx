@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Edit3, Copy, Trash2, ArrowRightLeft, Tag, Check, X } from 'lucide-react';
-import { Movement, Account, Fund, TagItem } from '../types';
+import { Edit3, Copy, Trash2, ArrowRightLeft, Tag, Check, X, Repeat } from 'lucide-react';
+import { Movement, Account, Fund, TagItem, Recurrence } from '../types';
 import { formatCurrency } from '../utils/formatters';
 import { TagService } from '../services/TagService';
+import { RecurrenceService } from '../services/RecurrenceService';
 
 interface ContextMenuProps {
   x: number;
@@ -17,6 +18,7 @@ interface ContextMenuProps {
   onChangeAccount: (mov: Movement, newAccountId: string) => void;
   onAssignTag?: (mov: Movement, tagName: string, action?: 'ADD' | 'REMOVE' | 'TOGGLE') => void;
   onClearTags?: (mov: Movement) => void;
+  onRefresh?: () => void;
 }
 
 export const DesktopContextMenu: React.FC<ContextMenuProps> = ({
@@ -31,15 +33,19 @@ export const DesktopContextMenu: React.FC<ContextMenuProps> = ({
   onDelete,
   onChangeAccount,
   onAssignTag,
-  onClearTags
+  onClearTags,
+  onRefresh
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const [showAccountSubmenu, setShowAccountSubmenu] = useState(false);
   const [showTagSubmenu, setShowTagSubmenu] = useState(false);
+  const [showRecurrenceSubmenu, setShowRecurrenceSubmenu] = useState(false);
   const [savedTags, setSavedTags] = useState<TagItem[]>([]);
+  const [recurrences, setRecurrences] = useState<Recurrence[]>([]);
 
   useEffect(() => {
     TagService.getSavedTags().then(tags => setSavedTags(tags)).catch(console.error);
+    RecurrenceService.getAll().then(recs => setRecurrences(recs)).catch(console.error);
   }, []);
 
   useEffect(() => {
@@ -191,6 +197,104 @@ export const DesktopContextMenu: React.FC<ContextMenuProps> = ({
                 >
                   <X size={13} className="shrink-0" />
                   <span>Rimuovi tutti i tag</span>
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Collega a Ricorrenza */}
+      <div className="relative">
+        <button
+          id="ctx-recurrence-btn"
+          onMouseEnter={() => { setShowRecurrenceSubmenu(true); setShowTagSubmenu(false); setShowAccountSubmenu(false); }}
+          onClick={() => { setShowRecurrenceSubmenu(!showRecurrenceSubmenu); setShowTagSubmenu(false); setShowAccountSubmenu(false); }}
+          className="w-full text-left px-3 py-2 flex items-center justify-between text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5 hover:text-[#E31B23] transition-colors"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Repeat size={15} className="text-[#E31B23] shrink-0" />
+            <span className="truncate">
+              {movement.id_ricorrenza ? 'Gestisci ricorrenza' : 'Collega a ricorrenza'}
+            </span>
+          </div>
+          <span className="text-xs text-slate-400 shrink-0 ml-2">›</span>
+        </button>
+
+        {showRecurrenceSubmenu && (
+          <div
+            id="ctx-recurrence-submenu"
+            className={`absolute top-0 glass-dropdown rounded-2xl py-1 min-w-[220px] max-h-64 overflow-y-auto shadow-2xl z-50 ${
+              isSubmenuLeft ? 'right-full mr-1' : 'left-full ml-1'
+            }`}
+          >
+            <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-white/5 flex items-center justify-between">
+              <span>Ricorrenze attive</span>
+              <span className="text-[10px] text-slate-400">({recurrences.length})</span>
+            </div>
+
+            {recurrences.length === 0 ? (
+              <div className="px-3 py-3 text-xs text-slate-400 text-center">
+                Nessuna ricorrenza configurata.
+              </div>
+            ) : (
+              <div className="py-1 space-y-0.5">
+                {recurrences.map(rec => {
+                  const isLinked = movement.id_ricorrenza === rec.id;
+                  return (
+                    <button
+                      key={rec.id}
+                      onClick={async () => {
+                        try {
+                          if (isLinked) {
+                            await RecurrenceService.unlinkMovement(movement.id);
+                          } else {
+                            await RecurrenceService.linkMovements(rec.id, [movement.id]);
+                          }
+                          if (onRefresh) onRefresh();
+                        } catch (err) {
+                          console.error(err);
+                        }
+                        onClose();
+                      }}
+                      className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-slate-50 dark:hover:bg-white/5 transition-colors ${
+                        isLinked
+                          ? 'bg-red-500/10 font-bold text-[#E31B23]'
+                          : 'text-slate-700 dark:text-slate-200'
+                      }`}
+                    >
+                      <div className="min-w-0 mr-2">
+                        <div className="truncate font-semibold">{rec.nome}</div>
+                        <div className="text-[10px] text-slate-400">
+                          {formatCurrency(rec.importo)} • {rec.frequenza.toLowerCase()}
+                        </div>
+                      </div>
+                      {isLinked && (
+                        <Check size={14} className="text-[#E31B23] shrink-0" strokeWidth={2.5} />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {movement.id_ricorrenza && (
+              <>
+                <div className="h-px bg-slate-100 dark:bg-white/5 my-1" />
+                <button
+                  onClick={async () => {
+                    try {
+                      await RecurrenceService.unlinkMovement(movement.id);
+                      if (onRefresh) onRefresh();
+                    } catch (e) {
+                      console.error(e);
+                    }
+                    onClose();
+                  }}
+                  className="w-full text-left px-3 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 flex items-center gap-2 transition-colors"
+                >
+                  <X size={13} className="shrink-0" />
+                  <span>Scollega da ricorrenza</span>
                 </button>
               </>
             )}

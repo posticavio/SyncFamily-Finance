@@ -452,6 +452,248 @@ Restituisci ESCLUSIVAMENTE l'oggetto JSON puro, senza blocchi di codice markdown
   }
 });
 
+// Funzione di formattazione del testo per una lettura naturale senza asterischi o sigle tecniche
+function formatNaturalResponse(text: string): string {
+  if (!text) return '';
+  return text
+    // Rimuove intestazioni markdown pesanti
+    .replace(/^#{1,6}\s+/gm, '')
+    // Rimuove tutti gli asterischi (grassetto e corsivo)
+    .replace(/\*\*/g, '')
+    .replace(/\*/g, '')
+    // Sostituisce eventuali punti elenco ad asterisco con trattini lineari puliti
+    .replace(/^\s*\*\s+/gm, '- ')
+    // Traduzione in italiano naturale di eventuali sigle o tag tecnici sfuggiti
+    .replace(/\bHO_BISOGNO\b/gi, 'necessità quotidiana')
+    .replace(/\bBISOGNO\b/gi, 'necessità')
+    .replace(/\bDEVO\b/gi, 'spesa fissa inderogabile')
+    .replace(/\bVOGLIO\b/gi, 'spesa discrezionale')
+    .replace(/\bDESIDERIO\b/gi, 'svago o piacere')
+    .replace(/\bRISPARMIO\b/gi, 'risparmio')
+    .replace(/\bUSCITA\b/gi, 'spesa')
+    .replace(/\bENTRATA\b/gi, 'entrata')
+    .trim();
+}
+
+// Funzione di risposta locale intelligente per Chatbot basata sui dati dell'applicazione
+function generateLocalChatResponse(userQuery: string, data: any): string {
+  const query = (userQuery || '').toLowerCase();
+  const formatEuro = (v: number) =>
+    new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(Number(v) || 0);
+
+  const entrate = Number(data?.entrate) || 0;
+  const uscite = Number(data?.uscite) || 0;
+  const saldo = entrate - uscite;
+  const conti = Array.isArray(data?.conti) ? data.conti : [];
+  const topSpese = Array.isArray(data?.topSpese) ? data.topSpese : [];
+  const ripartizione = data?.ripartizione503020 || {};
+  const budgetList = Array.isArray(data?.budget) ? data.budget : [];
+  const sforamenti = budgetList.filter((b: any) => Number(b.speso) > Number(b.importo));
+
+  if (query.includes('50/30/20') || query.includes('devo') || query.includes('bisogno') || query.includes('voglio') || query.includes('modello')) {
+    const devo = Number(ripartizione.devo) || 0;
+    const bisogno = Number(ripartizione.ho_bisogno) || 0;
+    const voglio = Number(ripartizione.voglio) || 0;
+    const devoPct = entrate > 0 ? Math.round((devo / entrate) * 100) : 0;
+    const bisognoPct = entrate > 0 ? Math.round((bisogno / entrate) * 100) : 0;
+    const voglioPct = entrate > 0 ? Math.round((voglio / entrate) * 100) : 0;
+
+    return `Ecco l'analisi della tua ripartizione ideale 50/30/20 calcolata su entrate totali di ${formatEuro(entrate)}:
+
+- Spese fisse e impegni inderogabili (quota ideale 50%): Hai speso ${formatEuro(devo)}, pari al ${devoPct}% delle tue entrate. ${devoPct > 50 ? 'Questo valore supera la soglia raccomandata del 50%.' : 'La quota è in perfetto equilibrio.'}
+- Necessità quotidiane e consumi primari (quota ideale 30%): Hai speso ${formatEuro(bisogno)}, pari al ${bisognoPct}% delle entrate. ${bisognoPct > 30 ? 'Leggermente oltre il 30%.' : 'Ottima gestione.'}
+- Spese discrezionali, svago e desideri (quota ideale 20%): Hai speso ${formatEuro(voglio)}, pari al ${voglioPct}% delle entrate.
+
+Un consiglio pratico: ${devoPct > 50 ? 'Le spese fisse vincolano oltre la metà delle entrate. Valuta una revisione dei contratti utenze o delle condizioni dei finanziamenti per recuperare margine.' : 'Mantieni questo equilibrio per destinare una parte costante al tuo fondo di risparmio.'}`;
+  }
+
+  if (query.includes('budget') || query.includes('sforat') || query.includes('rischio')) {
+    if (sforamenti.length === 0) {
+      return `Ottime notizie sui tuoi budget: nessuna sottocategoria ha superato il tetto mensile stabilito. Tutti i budget monitorati sono in sicurezza. Continua con questo ritmo di spesa!`;
+    }
+    const dettagli = sforamenti.map((s: any) => {
+      const diff = Number(s.speso) - Number(s.importo);
+      return `- ${s.nome || s.sottocategoria}: spesi ${formatEuro(s.speso)} rispetto al tetto di ${formatEuro(s.importo)} (superamento di ${formatEuro(diff)})`;
+    }).join('\n');
+
+    return `Attenzione, ci sono ${sforamenti.length} categorie che hanno superato il budget previsto:\n\n${dettagli}\n\nUn consiglio utile: nei giorni restanti del mese cerca di limitare le spese non urgenti in queste voci o attingi da categorie in cui hai ancora margine disponibile.`;
+  }
+
+  if (query.includes('consigli') || query.includes('risparm') || query.includes('ottimizz')) {
+    const topNome = topSpese[0]?.nome || 'Spese Extra';
+    const topImporto = topSpese[0]?.importo || 0;
+    return `Ecco tre consigli concreti formulati analizzando i tuoi movimenti di questo mese:
+
+1. Ottimizzazione della voce principale (${topNome}, per cui hai speso ${formatEuro(topImporto)}):
+Trattandosi della spesa più consistente, una piccola riduzione del 10% sugli acquisti discrezionali ti permetterebbe di liberare subito circa ${formatEuro(topImporto * 0.1)}.
+
+2. Monitoraggio del saldo netto (${saldo >= 0 ? '+' : ''}${formatEuro(saldo)}):
+${saldo > 0 ? `Hai un avanzo favorevole di ${formatEuro(saldo)}. Il momento ideale per spostare una parte di questa liquidità verso il tuo fondo emergenza.` : `Al momento registri un disavanzo di ${formatEuro(Math.abs(saldo))}. Ti conviene rallentare le spese per il tempo libero fino a fine mese.`}
+
+3. Allineamento delle rate e ricorrenze:
+Verifica che le scadenze delle rate cadano nei giorni immediatamente successivi all'accredito dello stipendio, così da preservare la disponibilità sul conto principale ed evitare scoperti.`;
+  }
+
+  if (query.includes('posso spendere') || query.includes('spendere ancora') || query.includes('margine')) {
+    const margineDisponibile = Math.max(0, saldo);
+    const budgetTotale = budgetList.reduce((acc: number, b: any) => acc + (Number(b.importo) || 0), 0);
+    const spesoBudget = budgetList.reduce((acc: number, b: any) => acc + (Number(b.speso) || 0), 0);
+    const budgetRimanente = Math.max(0, budgetTotale - spesoBudget);
+
+    return `In base ai tuoi dati finanziari attuali:
+- Saldo netto del mese: ${saldo >= 0 ? '+' : ''}${formatEuro(saldo)} (entrate ${formatEuro(entrate)} - uscite ${formatEuro(uscite)})
+- Margine residuo sui budget impostati: ${formatEuro(budgetRimanente)}
+
+Consiglio operativo:
+Per arrivare a fine mese senza intaccare il tuo risparmio, ti suggerisco di contenere le uscite discrezionali entro ${formatEuro(margineDisponibile > 0 ? margineDisponibile * 0.7 : 0)}. Questo ti lascerà un margine di sicurezza per eventuali imprevisti.`;
+  }
+
+  if (query.includes('previsione') || query.includes('fine mese') || query.includes('proiezione')) {
+    const oggi = new Date();
+    const giornoAttuale = Math.max(1, oggi.getDate());
+    const giorniTotaliMese = new Date(oggi.getFullYear(), oggi.getMonth() + 1, 0).getDate();
+    const giorniRimanenti = Math.max(0, giorniTotaliMese - giornoAttuale);
+    const spesaMediaGiornaliera = uscite / giornoAttuale;
+    const spesaPrevistaMese = uscite + (spesaMediaGiornaliera * giorniRimanenti);
+    const saldoStimatoFineMese = entrate - spesaPrevistaMese;
+
+    return `Ecco la proiezione stimata per la fine del mese in corso:
+- Spesa media giornaliera attuale: ${formatEuro(spesaMediaGiornaliera)} al giorno (calcolata su ${giornoAttuale} giorni)
+- Spesa totale stimata a fine mese: ${formatEuro(spesaPrevistaMese)}
+- Saldo netto stimato a fine mese: ${saldoStimatoFineMese >= 0 ? '+' : ''}${formatEuro(saldoStimatoFineMese)}
+
+${saldoStimatoFineMese >= 0 
+  ? `Se mantieni l'attuale ritmo di spesa, chiuderai il mese in positivo con un ottimo avanzo di ${formatEuro(saldoStimatoFineMese)}.` 
+  : `Attenzione: continuando con questa media giornaliera rischi di chiudere con un disavanzo di ${formatEuro(Math.abs(saldoStimatoFineMese))}. Ti conviene rallentare le uscite discrezionali nei prossimi ${giorniRimanenti} giorni.`}`;
+  }
+
+  if (query.includes('analizza spese') || query.includes('analisi spese')) {
+    const prima = topSpese[0];
+    const altre = topSpese.slice(1, 5);
+    let testo = `Analisi dettagliata delle tue spese per questo mese:\n- Uscite totali registrate: ${formatEuro(uscite)}\n`;
+    if (prima) {
+      const incidenza = uscite > 0 ? Math.round((prima.importo / uscite) * 100) : 0;
+      testo += `- Spesa principale: ${prima.nome} (${formatEuro(prima.importo)}, che assorbe il ${incidenza}% delle tue uscite totali)\n`;
+    }
+    if (altre.length > 0) {
+      testo += `\nAltre categorie di spesa significative:\n`;
+      altre.forEach((item: any) => {
+        const pct = uscite > 0 ? Math.round((item.importo / uscite) * 100) : 0;
+        testo += `- ${item.nome}: ${formatEuro(item.importo)} (${pct}%)\n`;
+      });
+    }
+    testo += `\nRapporto con le entrate: Hai speso il ${entrate > 0 ? Math.round((uscite / entrate) * 100) : 0}% di quanto incassato, lasciando un saldo netto di ${saldo >= 0 ? '+' : ''}${formatEuro(saldo)}.`;
+    return testo;
+  }
+
+  if (query.includes('maggior') || query.includes('più alta') || query.includes('spes') || query.includes('top') || query.includes('uscit')) {
+    if (topSpese.length === 0) {
+      return `Al momento le tue uscite complessive registrate per questo mese ammontano a ${formatEuro(uscite)}.`;
+    }
+    const prima = topSpese[0];
+    const altre = topSpese.slice(1, 4);
+
+    let testo = `Nel mese in corso la spesa maggiore in assoluto che hai sostenuto riguarda la voce ${prima.nome}, con un importo complessivo di ${formatEuro(prima.importo)}.\n\n`;
+    if (altre.length > 0) {
+      testo += `Subito dopo, le uscite più rilevanti sono:\n`;
+      altre.forEach((item: any, i: number) => {
+        testo += `- ${item.nome}: ${formatEuro(item.importo)}\n`;
+      });
+    }
+    testo += `\nIn totale le uscite registrate per il periodo ammontano a ${formatEuro(uscite)}.`;
+    return testo;
+  }
+
+  if (query.includes('conto') || query.includes('conti') || query.includes('saldo') || query.includes('liquidit')) {
+    const elencoConti = conti.map((c: any) =>
+      `- ${c.nome_conto || c.nome}: ${formatEuro(c.saldo_reale ?? c.saldo ?? 0)}`
+    ).join('\n');
+    return `Panoramica dei tuoi conti disponibili:\n\n${elencoConti || 'Nessun conto configurato'}\n\nIl saldo netto del periodo è pari a ${formatEuro(saldo)}.`;
+  }
+
+  // Risposta generica basata sullo stato finanziario
+  return `Ecco il riepilogo finanziario attuale:\n- Entrate totali: ${formatEuro(entrate)}\n- Uscite totali: ${formatEuro(uscite)}\n- Saldo netto: ${saldo >= 0 ? '+' : ''}${formatEuro(saldo)}\n- Conti attivi: ${conti.length}\n\nPuoi chiedermi ad esempio:\n- Qual è stata la mia spesa maggiore questo mese?\n- Come sta andando la regola 50/30/20?\n- Ho dei budget a rischio sforamento?\n- Dammi consigli pratici per risparmiare.`;
+}
+
+// Endpoint Chatbot Finanziario Multi-turn Gemini AI
+app.post('/api/gemini-chat', async (req, res) => {
+  try {
+    const { messages, contextData } = req.body;
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: 'Messaggi mancanti o non validi' });
+    }
+
+    const ai = getAI();
+    const lastUserMessage = messages[messages.length - 1]?.content || '';
+
+    // Se l'API key non è configurata, usiamo il motore finanziario locale
+    if (!ai) {
+      const rawReply = generateLocalChatResponse(lastUserMessage, contextData);
+      return res.json({ reply: formatNaturalResponse(rawReply), source: 'LOCAL_ENGINE' });
+    }
+
+    const systemInstruction = `
+Sei il consulente e assistente finanziario personale per l'applicazione "Finanze Familiari".
+Rispondi all'utente in lingua italiana con un linguaggio del tutto naturale, scorrevole, cordiale, empatico e professionale, esattamente come parlerebbe un vero consulente umano.
+
+REGOLE TASSATIVE DI STILE E FORMATTAZIONE:
+1. DIVIETO ASSOLUTO DI ASTERISCHI: Non usare MAI asterischi nel testo (nessun doppio asterisco e nessun singolo asterisco). Non usare il grassetto markdown. La risposta deve essere pulita e priva di caratteri di formattazione artificiali.
+2. DIVIETO DI SIGLE E CODICI TECNICI: Non usare mai tag informatici o etichette grezze come "BISOGNO", "HO_BISOGNO", "DEVO", "VOGLIO", "USCITA", "ENTRATA". Traducile sempre in espressioni naturali della lingua italiana (ad esempio: "spese fisse inderogabili per la casa", "necessità quotidiane e consumi primari", "spese discrezionali per il tempo libero e lo svago").
+3. TONO FLUIDO E CONVERSAZIONALE: Formula frasi ben articolate, piacevoli e facili da leggere, senza rigidità da computer.
+4. Per elencare delle voci quando necessario, usa normali trattini lineari (-) oppure una semplice numerazione (1., 2., 3.).
+5. Cita con precisione e naturalezza gli importi in euro dai dati forniti (es. 798,86 €).
+6. Basa la tua risposta ESCLUSIVAMENTE sui dati reali dell'applicazione forniti nel contesto sottostante.
+
+DATI FINANZIARI REALI DELL'APPLICAZIONE:
+${JSON.stringify(contextData || {}, null, 2)}
+`;
+
+    // Mappatura cronologia compatibile con @google/genai
+    const contents = messages.map((m: any) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: String(m.content || '') }]
+    }));
+
+    let reply = '';
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.5-flash',
+        contents,
+        config: {
+          systemInstruction,
+          temperature: 0.7
+        }
+      });
+      reply = response.text || '';
+    } catch (modelErr: any) {
+      console.warn('Fallback a gemini-3.1-flash-lite:', modelErr?.message || modelErr);
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-flash-lite',
+        contents,
+        config: {
+          systemInstruction,
+          temperature: 0.7
+        }
+      });
+      reply = response.text || '';
+    }
+
+    if (!reply) {
+      reply = generateLocalChatResponse(lastUserMessage, contextData);
+    }
+
+    // Sanificazione garantita: rimuove qualsiasi asterisco o residuo di tag tecnico
+    const cleanReply = formatNaturalResponse(reply);
+
+    return res.json({ reply: cleanReply, source: 'GEMINI_AI' });
+  } catch (err: any) {
+    console.error('Errore API Gemini Chat:', err?.message || err);
+    const lastUserMessage = req.body?.messages?.[req.body.messages.length - 1]?.content || '';
+    const fallbackReply = generateLocalChatResponse(lastUserMessage, req.body?.contextData);
+    return res.json({ reply: formatNaturalResponse(fallbackReply), source: 'LOCAL_FALLBACK' });
+  }
+});
+
 // ----------------------------------------------------
 // VITE MIDDLEWARE SETUP (DEV & PROD)
 // ----------------------------------------------------

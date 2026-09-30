@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, FolderKanban, Building, Car, Landmark, Hammer, CreditCard, DollarSign, Calendar, AlertCircle, History, CheckCircle2, Calculator } from 'lucide-react';
 import { Project, ProjectType, ProjectStatus, Subcategory, Account, Fund } from '../types';
 import { ProjectService } from '../services/ProjectService';
@@ -43,57 +43,68 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Inizializza o resetta i dati quando il modal si apre
-  useEffect(() => {
-    if (editingProject) {
-      setNome(editingProject.nome_progetto);
-      setTipo(editingProject.tipo || 'FINANZIAMENTO');
-      setSottocategoriaId(editingProject.sottocategoria_id || '');
-      setBudgetPrevisto(editingProject.budget_previsto || '');
-      setRataMensile(editingProject.rata_mensile || '');
-      setNumeroRateTotali(editingProject.numero_rate_totali || '');
-      setTassoInteresse(editingProject.tasso_interesse || '');
-      setContoAddebitoId(editingProject.conto_addebito_id || '');
-      setGiornoAddebitoRata(editingProject.giorno_addebito_rata || '');
-      setStato(editingProject.stato || 'ATTIVO');
-      setDataInizio(editingProject.data_inizio || new Date().toISOString().split('T')[0]);
-      setDataFine(editingProject.data_fine || '');
-      setNote(editingProject.note || '');
+  const prevIsOpenRef = useRef(false);
+  const prevEditingProjectRef = useRef<Project | null | undefined>(undefined);
 
-      const hasGiaPagato = Boolean(
-        (editingProject.importo_gia_pagato !== undefined && editingProject.importo_gia_pagato > 0) ||
-        (editingProject.rate_gia_pagate !== undefined && editingProject.rate_gia_pagate > 0)
-      );
-      setIsGiaIniziato(hasGiaPagato);
-      setImportoGiaPagato(editingProject.importo_gia_pagato ?? '');
-      setRateGiaPagate(editingProject.rate_gia_pagate ?? '');
-    } else {
-      setNome('');
-      setTipo('FINANZIAMENTO');
-      // Pre-seleziona la prima sottocategoria utile per finanziamenti o casa se presente
-      const defaultSub = subcategories.find(s => 
-        s.nome.toLowerCase().includes('finanziamento') || 
-        s.nome.toLowerCase().includes('mutuo') ||
-        s.categoria_padre.toLowerCase().includes('prestiti') ||
-        s.categoria_padre.toLowerCase().includes('casa')
-      ) || subcategories[0];
-      setSottocategoriaId(defaultSub ? defaultSub.id : '');
-      setBudgetPrevisto('');
-      setRataMensile('');
-      setNumeroRateTotali('');
-      setTassoInteresse('');
-      setContoAddebitoId(accounts[0]?.id || '');
-      setGiornoAddebitoRata(10);
-      setStato('ATTIVO');
-      setDataInizio(new Date().toISOString().split('T')[0]);
-      setDataFine('');
-      setNote('');
-      setIsGiaIniziato(false);
-      setImportoGiaPagato('');
-      setRateGiaPagate('');
+  // Inizializza o resetta i dati quando il modal si apre o cambia editingProject
+  useEffect(() => {
+    const isOpening = isOpen && !prevIsOpenRef.current;
+    const projectChanged = isOpen && editingProject !== prevEditingProjectRef.current;
+
+    if (isOpening || projectChanged) {
+      if (editingProject) {
+        setNome(editingProject.nome_progetto);
+        setTipo(editingProject.tipo || 'FINANZIAMENTO');
+        setSottocategoriaId(editingProject.sottocategoria_id || '');
+        setBudgetPrevisto(editingProject.budget_previsto || '');
+        setRataMensile(editingProject.rata_mensile || '');
+        setNumeroRateTotali(editingProject.numero_rate_totali || '');
+        setTassoInteresse(editingProject.tasso_interesse || '');
+        setContoAddebitoId(editingProject.conto_addebito_id || '');
+        setGiornoAddebitoRata(editingProject.giorno_addebito_rata || '');
+        setStato(editingProject.stato || 'ATTIVO');
+        setDataInizio(editingProject.data_inizio || new Date().toISOString().split('T')[0]);
+        setDataFine(editingProject.data_fine || '');
+        setNote(editingProject.note || '');
+
+        const hasGiaPagato = Boolean(
+          (editingProject.importo_gia_pagato !== undefined && editingProject.importo_gia_pagato > 0) ||
+          (editingProject.rate_gia_pagate !== undefined && editingProject.rate_gia_pagate > 0)
+        );
+        setIsGiaIniziato(hasGiaPagato);
+        setImportoGiaPagato(editingProject.importo_gia_pagato ?? '');
+        setRateGiaPagate(editingProject.rate_gia_pagate ?? '');
+      } else {
+        setNome('');
+        setTipo('FINANZIAMENTO');
+        // Pre-seleziona la prima sottocategoria utile per finanziamenti o casa se presente
+        const defaultSub = subcategories.find(s => 
+          s.nome.toLowerCase().includes('finanziamento') || 
+          s.nome.toLowerCase().includes('mutuo') ||
+          s.categoria_padre.toLowerCase().includes('prestiti') ||
+          s.categoria_padre.toLowerCase().includes('casa')
+        ) || subcategories[0];
+        setSottocategoriaId(defaultSub ? defaultSub.id : '');
+        setBudgetPrevisto('');
+        setRataMensile('');
+        setNumeroRateTotali('');
+        setTassoInteresse('');
+        setContoAddebitoId(accounts[0]?.id || '');
+        setGiornoAddebitoRata(10);
+        setStato('ATTIVO');
+        setDataInizio(new Date().toISOString().split('T')[0]);
+        setDataFine('');
+        setNote('');
+        setIsGiaIniziato(false);
+        setImportoGiaPagato('');
+        setRateGiaPagate('');
+      }
+      setError(null);
     }
-    setError(null);
-  }, [isOpen, editingProject, subcategories, accounts]);
+
+    prevIsOpenRef.current = isOpen;
+    prevEditingProjectRef.current = editingProject;
+  }, [isOpen, editingProject]);
 
   if (!isOpen) return null;
 
